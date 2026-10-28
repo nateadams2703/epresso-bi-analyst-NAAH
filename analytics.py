@@ -16,14 +16,15 @@ def excel_sheet_names(file_bytes: bytes) -> list[str]:
     return pd.ExcelFile(io.BytesIO(file_bytes)).sheet_names
 
 
-def load_table(file_bytes: bytes, filename: str, sheet_name=0) -> pd.DataFrame:
-    """Read an uploaded CSV / TXT / TSV / Excel file into a DataFrame."""
+def load_table(file_bytes: bytes, filename: str, sheet_name=0, **read_options) -> pd.DataFrame:
+    """Read an uploaded CSV / TXT / TSV / Excel file into a DataFrame.
+    `read_options` (e.g. header=2, dtype={'PostalCode': str}) are passed to pandas."""
     name = filename.lower()
     buffer = io.BytesIO(file_bytes)
     if name.endswith(EXCEL_EXT):
-        return pd.read_excel(buffer, sheet_name=sheet_name)
+        return pd.read_excel(buffer, sheet_name=sheet_name, **read_options)
     if name.endswith(TEXT_EXT):
-        return pd.read_csv(buffer, sep=None, engine='python')  # sniffs the delimiter
+        return pd.read_csv(buffer, sep=None, engine='python', **read_options)  # sniffs the delimiter
     raise ValueError(f'Unsupported file type: {filename}')
 
 
