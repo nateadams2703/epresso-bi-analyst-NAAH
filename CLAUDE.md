@@ -78,7 +78,9 @@ Full background is in `docs/powerbi-walkthrough.md` (the original Power BI assig
   - SH07 (Flushing, NY) has `Location = Southwest`, which looks inconsistent with New York.
   - Two different stores are in Orlando, FL (SH01, SH08) — city is not unique; always use `ID` as the key.
 - SH01 (Orlando) is `Location = South` while SH08 (Orlando) is `Location = East` — second Location inconsistency.
-- `PostalCode` loads as a decimal (`32822.0`) because SH00's blank forces pandas to use floats — read it as text.
+- SH04 (Greenville, NC) is `Location = East` while SH19 (Raleigh, NC) is `Location = South` — found by `data_prep.data_quality_notes()`.
+- All Location findings are reported as **"Possible Location inconsistency to review"**, never errors: E-Presso's Location values may be company sales territories rather than standard geography (Nate's decision, Oct 28).
+- `PostalCode` loads as a decimal (`32822.0`) because SH00's blank forces pandas to use floats — read it as text (done in `data_prep.TABLE_SPECS`).
 
 ## Assistant rules (Guide Section 7)
 - **Banned:** LangChain pandas DataFrame agent, PandasAI, code-interpreter features, `eval()`/`exec()` on model output, model-written SQL or pandas, any function that changes the loaded data.
@@ -115,6 +117,10 @@ The starter app already has three tabs — **Data and profile**, **Dashboard**, 
 
 Key idea: **the dashboard and the assistant call the same `analytics.py` functions**, so validating the functions validates both. Before creating new files, check what the starter already provides and confirm the plan with me.
 
+## Deploying
+- **After pushing a change to a helper file (`analytics.py`, `data_prep.py`, `agent.py`), reboot the app** in Streamlit Cloud (Manage app → ⋮ → Reboot app). On a push, Streamlit Cloud reruns `streamlit_app.py` but can keep the *old* helper modules in memory, so new app code calls old functions. This happened on Oct 28: every table failed with `load_table() got an unexpected keyword argument 'dtype'` until a reboot.
+- After every deploy, open the live app and check for red error boxes before calling a step done. Include the reboot step in every live-app checklist.
+
 ## Checkpoints (Guide Section 2 — suggested pacing only)
 | Date | Checkpoint | Done means |
 |---|---|---|
@@ -135,5 +141,10 @@ Nov 8–15: LLM upgrade, five agent tests + fix/retest, reflection, defense prep
 - Teammate and I are collaborating closely rather than splitting tasks. We still need commits from both GitHub accounts before Nov 15 (rubric: "one-person repository" falls short).
 - Decisions made (Oct 28): the app **loads the original files from `data/` by default**, and an upload replaces them. OK to create `data_prep.py` as planned.
 - All five tables are in `data/` (Access converted to CSV on Oct 28; see "What we know about the data").
-- **Next up: Checkpoint 1** — load all five tables via `data_prep.py`, extend the "Data and profile" tab (rows, columns, dtypes, missing values, duplicates, key uniqueness per table), and draft grain statements in `docs/grain-statements.md` for me to review.
+- **Checkpoint 1 done (Oct 28):** `docs/grain-statements.md` written and reviewed; `data_prep.py` loads and checks all five tables (16 tests, 25 total passing); the hosted app loads the files from `data/` and shows the data profile, data-quality notes, key checks, and relationship checks. After the push the live app first failed (old `analytics.py` still in memory); rebooting it in Streamlit Cloud fixed it, and the live app now matches local. Git login set up (fine-grained token in macOS keychain), so `git push origin main` works.
+- Streamlit Cloud installs the **newest** package versions (pandas 3.x, Streamlit 1.66 on Oct 28), newer than on Nate's Mac. Test in a clean environment before relying on version-specific behaviour.
+- Known small gap: the uploader accepts `.xls`, which would need `xlrd` (not installed); no expected file is `.xls`, so it only triggers the "name doesn't match" message.
+- The assistant temporarily runs on the Sales table only (until Checkpoint 3).
+- Teammate (Audrey) has **no commit yet** — needs at least one before Nov 15.
+- **Next up: Checkpoint 2** — join Sales → Stores/Products/Categories with `check_merge()` and fill the merge-check log; compute total revenue and reconcile with Power BI; add filters and three charts; write $1,000-test predictions *before* uploading the modified file.
 - Update this section as checkpoints are completed.

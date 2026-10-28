@@ -38,6 +38,8 @@ _Revenue is not profit. What else can this app not tell a manager?_
 ## Run it
 Hosted: deploy from this repository on share.streamlit.io with main file `streamlit_app.py`.
 
+**After pushing changes to a helper file** (`analytics.py`, `data_prep.py`, `agent.py`), **reboot the app** in Streamlit Cloud (Manage app → ⋮ → Reboot app). A push reruns `streamlit_app.py`, but Streamlit Cloud can keep the old helper modules in memory, so the app may fail with errors such as `unexpected keyword argument` until it is rebooted.
+
 Locally (optional): `pip install -r requirements-dev.txt`, then `streamlit run streamlit_app.py`. Run tests with `pytest`.
 
 ## Secrets
