@@ -135,16 +135,21 @@ Nov 8–15: LLM upgrade, five agent tests + fix/retest, reflection, defense prep
 
 ## Current status
 - Checkpoints are suggested pacing only, not graded or submitted. The only real deadline is the final submission on Nov 15.
-- **Checkpoint 0 done (Oct 28):** starter app deployed on Streamlit Community Cloud and tested — uploading the Stores file showed a correct preview and profile (21 rows, 9 columns, 0 duplicates).
-- Branch name: confirm on GitHub whether it's `main` or `master` before any push.
-- GitHub repo: `nateadams2703/epresso-bi-analyst-NAAH`, cloned to my Mac at `~/Documents/epresso-bi-analyst-NAAH`. Git login for pushing is **not set up yet** — help me with that the first time I ask to push.
-- Teammate and I are collaborating closely rather than splitting tasks. We still need commits from both GitHub accounts before Nov 15 (rubric: "one-person repository" falls short).
-- Decisions made (Oct 28): the app **loads the original files from `data/` by default**, and an upload replaces them. OK to create `data_prep.py` as planned.
-- All five tables are in `data/` (Access converted to CSV on Oct 28; see "What we know about the data").
-- **Checkpoint 1 done (Oct 28):** `docs/grain-statements.md` written and reviewed; `data_prep.py` loads and checks all five tables (16 tests, 25 total passing); the hosted app loads the files from `data/` and shows the data profile, data-quality notes, key checks, and relationship checks. After the push the live app first failed (old `analytics.py` still in memory); rebooting it in Streamlit Cloud fixed it, and the live app now matches local. Git login set up (fine-grained token in macOS keychain), so `git push origin main` works.
-- Streamlit Cloud installs the **newest** package versions (pandas 3.x, Streamlit 1.66 on Oct 28), newer than on Nate's Mac. Test in a clean environment before relying on version-specific behaviour.
+- GitHub repo: `nateadams2703/epresso-bi-analyst-NAAH` (branch `main`), cloned to `~/Documents/epresso-bi-analyst-NAAH`. Git login works (fine-grained token in the macOS keychain), so `git push origin main` works without prompting.
+- **Both teammates have commits:** Audrey's first commit (`d011f3b`, Oct 29) reviewed `docs/grain-statements.md`. She will fix that file's "Status: draft for review" line as her second commit, so don't change it.
+- Decisions (Oct 28–29): the app loads the original files from `data/` by default and an upload replaces a table; filters live at the top of the sidebar; Location issues are "possible inconsistencies to review" (may be sales territories); the store chart shows physical stores by default with an "Include the website" checkbox; category trends are small multiples with their own vertical scales.
+- **Checkpoint 0 done (Oct 28):** starter app deployed on Streamlit Community Cloud.
+- **Checkpoint 1 done (Oct 28):** grain statements written and reviewed; `data_prep.py` loads and checks all five tables; hosted app shows the data profile. The live app needed a reboot after the push (see Deploying).
+- **Checkpoint 2 nearly done (Oct 29):**
+  - Joins: `build_sales_model()` joins Sales → Stores/Products/Categories through `check_merge()`; 25,200 rows and $42,174,440 before and after every join (merge-check log in `docs/grain-statements.md`).
+  - Reconciled with Power BI (`docs/validation-table.md`): total, Website, and Brick & Mortar match exact Power BI table values to the cent; years, months (company and Chicago), and Chicago by year match every Power BI label. Power BI's "Percent of Annual Revenue per Month" really divides by the grand total for the current filters; our chart is labelled honestly.
+  - Dashboard: sidebar filters (year, channel, store, category) built from the data; KPI tiles (total, Website share, revenue change); four charts (year × channel, monthly share, category × year small multiples, store). Every result calls `analytics.py` with the same selection.
+  - Analytics functions with the tool contract: `get_total_revenue`, `get_revenue_breakdown`, `get_monthly_share`, `get_revenue_change`, `store_labels`. Fixed a starter bug in `_apply_filters()` (it validated against already-filtered rows).
+  - Tests: 67 passing, including `tests/test_app.py` (AppTest: filters drive every result, store checkbox, stale filters, dollar-sign escaping).
+  - **Remaining: the $1,000 test.** Modified copy is ready at `data/modified/Sales.csv` (Sales ID S1120280601, SH11 Chicago, 2028-06-30, French Roast: 590.0 → 1590.0; verified exactly one line changed and +$1,000.00). Record template: `docs/1000-test.md`. **Nate and Audrey write the predictions (Part 2) themselves before uploading — don't fill them in.**
+- Streamlit Cloud installs the **newest** package versions (pandas 3.x, Streamlit 1.66, Plotly 7 on Oct 28–29), newer than on Nate's Mac. Run the tests in a clean environment before relying on version-specific behaviour.
+- Streamlit renders `$...$` in Markdown text as math: wrap any displayed text that can contain dollar signs in `md()` in `streamlit_app.py`. A test checks this.
 - Known small gap: the uploader accepts `.xls`, which would need `xlrd` (not installed); no expected file is `.xls`, so it only triggers the "name doesn't match" message.
-- The assistant temporarily runs on the Sales table only (until Checkpoint 3).
-- Teammate (Audrey) has **no commit yet** — needs at least one before Nov 15.
-- **Next up: Checkpoint 2** — join Sales → Stores/Products/Categories with `check_merge()` and fill the merge-check log; compute total revenue and reconcile with Power BI; add filters and three charts; write $1,000-test predictions *before* uploading the modified file.
+- The assistant still runs the starter tools on the Sales table only (until Checkpoint 3).
+- **Next up:** finish the $1,000 test (Checkpoint 2), then Checkpoint 3: at least three tested functions in the dispatcher (the four revenue functions above are candidates), replacing the starter's generic `get_total`/`group_total`.
 - Update this section as checkpoints are completed.
