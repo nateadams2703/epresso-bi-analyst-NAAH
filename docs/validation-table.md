@@ -1,24 +1,29 @@
 # Validation: Power BI vs. Streamlit app (Guide Section 8)
 
-**Status:** draft started Oct 29, 2026. The Power BI column is filled in; the **App result**
-column is filled in once the app calculates revenue (Checkpoint 2, step 2).
+**Status:** updated Oct 29, 2026. App results come from `analytics.get_total_revenue()`, the
+function the dashboard uses, run on the original files. So far only the total is shown in the
+app itself (the Dashboard KPI tile). The other rows will be shown on screen once the filters and
+charts exist (Checkpoint 2, step 3). The monthly row is pending until the monthly function exists.
 
-**Power BI source:** our submitted report (`docs/powerbi/finishedpowerbi.pbix`). The values are
-the chart **data labels**, read from the screenshots in `docs/powerbi/`. The labels are
-**rounded** (millions to one decimal place or none, percentages to two decimal places), so a
-match means the app's exact value rounds to the Power BI label. Exact tooltip values will be
-added if we get them.
+**Power BI source:** our submitted report (`docs/powerbi/finishedpowerbi.pbix`), read from the
+screenshots in `docs/powerbi/`.
+- **Total, Website, and Brick & Mortar** are **exact** values from Power BI table visuals
+  ("Sum of Revenue", and "Sum of Revenue" by StoreType; screenshots `PNG image copy.PNG` and
+  `PNG image 2.PNG`, Oct 29). A match means the values are identical to the cent.
+- **All other rows** use the chart **data labels**, which are **rounded** (millions to one
+  decimal place or none, percentages to two decimal places). A match there means the app's
+  exact value rounds to the Power BI label.
 
 ## Validation table
 
 | Metric | Power BI result | App result | Match? / Explanation |
 |---|---|---|---|
-| Total revenue (five years) | Not shown as a number on our report pages. The walkthrough says "about $42 million", and the channel bars add up to 27M + 15M = 42M. | _pending_ | Independent check: **$42,174,440.00**, which agrees with "about $42M". We need an exact Power BI figure (a card visual or tooltip) for a full comparison. |
-| Website revenue | 27M ("Total Revenue by Store Type") | _pending_ | Independent check: **$27,218,880.00**, which rounds to 27M. ✓ |
-| Brick-and-mortar revenue | 15M ("Total Revenue by Store Type") | _pending_ | Independent check: **$14,955,560.00**, which rounds to 15M. ✓ |
-| Revenue by year | 2025: 7.2M · 2026: 8.0M · 2027: 8.8M · 2028: 9.0M · 2029: 9.2M ("Total Revenue by Year") | _pending_ | Independent check: 7,181,750 · 8,016,950 · 8,824,720 · 8,969,470 · 9,181,550, which round to 7.2M / 8.0M / 8.8M / 9.0M / 9.2M. ✓ all five years. |
+| Total revenue (five years) | **42,174,440.00** (table visual, exact) | **$42,174,440.00** (Dashboard KPI tile) | ✓ **Exact match.** The independent check gives the same value. (The chart bars show this rounded as 27M + 15M ≈ 42M.) |
+| Website revenue | **27,218,880.00** (table visual, exact); chart label 27M | **$27,218,880.00** (`channel="Website"`) | ✓ **Exact match.** The independent check gives the same value. |
+| Brick-and-mortar revenue | **14,955,560.00** (table visual, exact); chart label 15M | **$14,955,560.00** (`channel="Brick & Mortar"`) | ✓ **Exact match.** The independent check gives the same value. Website + Brick & Mortar = the total, so no revenue lacks a channel. |
+| Revenue by year | 2025: 7.2M · 2026: 8.0M · 2027: 8.8M · 2028: 9.0M · 2029: 9.2M ("Total Revenue by Year") | 7,181,750 · 8,016,950 · 8,824,720 · 8,969,470 · 9,181,550 (`year=...`) | Independent check: 7,181,750 · 8,016,950 · 8,824,720 · 8,969,470 · 9,181,550, which round to 7.2M / 8.0M / 8.8M / 9.0M / 9.2M. ✓ all five years. |
 | Monthly revenue pattern | "Percent of Annual Revenue per Month": Jan 7.74% · Feb 3.83% · Apr 5.15% · Jun 6.50% · Aug 6.45% · Oct 8.31% · Nov 12.71% · Dec 25.61%. Mar, May, Jul and Sep bars have no data labels. | _pending_ | All 8 labelled months match the independent check to two decimal places. ✓ **But the chart's title is misleading; see the note below.** It shows each month's share of the **five-year grand total**, not of each year's total. Our app must label its monthly chart by what it actually calculates. |
-| Additional measure: **Chicago store (SH11) revenue by year** | With Chicago selected in the store bar chart: 2025: 0.54M · 2026: 0.41M · 2027: 0.36M · 2028: 0.27M · 2029: 0.18M; five-year bar: 2M | _pending_ | Independent check: 539,740 · 407,390 · 355,730 · 269,100 · 179,130, which round to the five labels ✓. Five-year total **$1,751,090**, which rounds to 2M ✓. That is a **66.8% decline** from 2025 to 2029, while company revenue grew. This measure tests the store filter, and it is the evidence behind the assignment's "Should E-Presso close its Chicago store?" question. |
+| Additional measure: **Chicago store (SH11) revenue by year** | With Chicago selected in the store bar chart: 2025: 0.54M · 2026: 0.41M · 2027: 0.36M · 2028: 0.27M · 2029: 0.18M; five-year bar: 2M | 539,740 · 407,390 · 355,730 · 269,100 · 179,130; five-year $1,751,090 (`store="SH11"`) | Independent check: 539,740 · 407,390 · 355,730 · 269,100 · 179,130, which round to the five labels ✓. Five-year total **$1,751,090**, which rounds to 2M ✓. That is a **66.8% decline** from 2025 to 2029, while company revenue grew. This measure tests the store filter, and it is the evidence behind the assignment's "Should E-Presso close its Chicago store?" question. |
 
 ## Note on the monthly chart's denominator
 
