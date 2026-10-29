@@ -1,9 +1,9 @@
 # Validation: Power BI vs. Streamlit app (Guide Section 8)
 
-**Status:** updated Oct 29, 2026. App results come from `analytics.get_total_revenue()`, the
-function the dashboard uses, run on the original files. So far only the total is shown in the
-app itself (the Dashboard KPI tile). The other rows will be shown on screen once the filters and
-charts exist (Checkpoint 2, step 3). The monthly row is pending until the monthly function exists.
+**Status:** all six rows filled in, Oct 29, 2026. App results come from the `analytics.py`
+functions the dashboard uses (`get_total_revenue()`, `get_revenue_breakdown()`,
+`get_monthly_share()`), run on the original files. Every value can also be read in the app's
+Dashboard tab, using the sidebar filters and each chart's "Show data" table.
 
 **Power BI source:** our submitted report (`docs/powerbi/finishedpowerbi.pbix`), read from the
 screenshots in `docs/powerbi/`.
@@ -22,7 +22,7 @@ screenshots in `docs/powerbi/`.
 | Website revenue | **27,218,880.00** (table visual, exact); chart label 27M | **$27,218,880.00** (`channel="Website"`) | ✓ **Exact match.** The independent check gives the same value. |
 | Brick-and-mortar revenue | **14,955,560.00** (table visual, exact); chart label 15M | **$14,955,560.00** (`channel="Brick & Mortar"`) | ✓ **Exact match.** The independent check gives the same value. Website + Brick & Mortar = the total, so no revenue lacks a channel. |
 | Revenue by year | 2025: 7.2M · 2026: 8.0M · 2027: 8.8M · 2028: 9.0M · 2029: 9.2M ("Total Revenue by Year") | 7,181,750 · 8,016,950 · 8,824,720 · 8,969,470 · 9,181,550 (`year=...`) | Independent check: 7,181,750 · 8,016,950 · 8,824,720 · 8,969,470 · 9,181,550, which round to 7.2M / 8.0M / 8.8M / 9.0M / 9.2M. ✓ all five years. |
-| Monthly revenue pattern | "Percent of Annual Revenue per Month": Jan 7.74% · Feb 3.83% · Apr 5.15% · Jun 6.50% · Aug 6.45% · Oct 8.31% · Nov 12.71% · Dec 25.61%. Mar, May, Jul and Sep bars have no data labels. | _pending_ | All 8 labelled months match the independent check to two decimal places. ✓ **But the chart's title is misleading; see the note below.** It shows each month's share of the **five-year grand total**, not of each year's total. Our app must label its monthly chart by what it actually calculates. |
+| Monthly revenue pattern | "Percent of Annual Revenue per Month": Jan 7.74% · Feb 3.83% · Apr 5.15% · Jun 6.50% · Aug 6.45% · Oct 8.31% · Nov 12.71% · Dec 25.61%. Mar, May, Jul and Sep bars have no data labels. | "Share of revenue by month" chart (`get_monthly_share()`, no filters): Jan 7.74% · Feb 3.83% · Mar 4.44% · Apr 5.15% · May 5.72% · Jun 6.50% · Jul 6.42% · Aug 6.45% · Sep 7.11% · Oct 8.31% · Nov 12.71% · Dec 25.61% (adds up to 100%). With Store = SH11: Jan 7.87% · Feb 3.91% · Apr 5.19% · Jun 6.51% · Aug 6.37% · Oct 8.52% · Nov 13.21% · Dec 24.75%. | ✓ **All 8 labelled months match**, and so do all 8 labels on the Chicago screenshot, to two decimal places. The 4 unlabelled months match the independent check. A test (`test_monthly_share_matches_power_bi_labels`) re-checks both sets on every run. **Same calculation, different label:** Power BI's title says "Percent of Annual Revenue", but both tools divide by the total for the current filters (the five-year total by default; see the note below). Our chart is titled "Share of revenue by month", its axis says "% of revenue for the selected period", and its caption says it is not a percent of each year's revenue. |
 | Additional measure: **Chicago store (SH11) revenue by year** | With Chicago selected in the store bar chart: 2025: 0.54M · 2026: 0.41M · 2027: 0.36M · 2028: 0.27M · 2029: 0.18M; five-year bar: 2M | 539,740 · 407,390 · 355,730 · 269,100 · 179,130; five-year $1,751,090 (`store="SH11"`) | Independent check: 539,740 · 407,390 · 355,730 · 269,100 · 179,130, which round to the five labels ✓. Five-year total **$1,751,090**, which rounds to 2M ✓. That is a **66.8% decline** from 2025 to 2029, while company revenue grew. This measure tests the store filter, and it is the evidence behind the assignment's "Should E-Presso close its Chicago store?" question. |
 
 ## Note on the monthly chart's denominator

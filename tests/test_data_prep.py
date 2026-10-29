@@ -157,12 +157,27 @@ def test_every_key_matches_in_clean_data(dfs, tmp_path):
 
 
 # ---------------------------------------------------------- data quality
-def test_website_blanks_are_expected_but_other_blanks_need_review(dfs, tmp_path):
-    dfs['Stores'].loc[2, 'City'] = None
+def test_website_blanks_are_one_expected_note_but_other_blanks_need_review(dfs, tmp_path):
+    dfs['Stores'].loc[2, 'City'] = None  # SH02 is a physical store
     tables, _ = load(dfs, tmp_path)
-    assert '1 blank City value(s) on Website rows' in notes_text(tables, 'Expected')
-    assert '1 blank City value(s).' in notes_text(tables, 'Review')
-    assert 'no in-store survey' in notes_text(tables, 'Expected')
+    notes = data_prep.data_quality_notes(tables)
+    expected = notes[notes['level'] == 'Expected']
+    assert len(expected) == 1  # every Website blank, in both tables, in one note
+    assert expected.iloc[0]['note'] == (
+        'Blank values on Website rows are expected: Stores City, State, PostalCode '
+        '(1 Website row(s): the website has no physical address); Survey Satisfaction, '
+        'Interest (1 Website row(s): no in-store survey is taken for the website).')
+    assert '1 blank City value(s).' in notes_text(tables, 'Review')  # SH02, not the website
+
+
+def test_notes_are_ordered_review_info_expected_with_a_summary(dfs, tmp_path):
+    dfs['Stores'].loc[1, 'Phone'] = '617) 555-0100'                        # Review
+    dfs['Stores'].loc[2, ['City', 'State']] = ['Boston', 'MA']             # Info: 2 in Boston
+    dfs['Stores'].loc[2, 'Location'] = 'East'
+    tables, _ = load(dfs, tmp_path)
+    notes = data_prep.data_quality_notes(tables)
+    assert list(notes['level']) == ['Review', 'Info', 'Expected']
+    assert data_prep.notes_summary(notes) == '1 to review · 1 info · 1 expected'
 
 
 def test_malformed_phone_is_flagged(dfs, tmp_path):
@@ -176,8 +191,12 @@ def test_location_mismatch_is_a_possible_inconsistency_not_an_error(dfs, tmp_pat
     tables, _ = load(dfs, tmp_path)
     review = notes_text(tables, 'Review')
     assert 'Possible Location inconsistency to review: SH01 (Boston, MA)' in review
-    assert 'sales territories' in review
-    assert set(data_prep.data_quality_notes(tables)['level']) <= {'Expected', 'Info', 'Review'}
+    notes = data_prep.data_quality_notes(tables)
+    assert set(notes['level']) <= {'Expected', 'Info', 'Review'}
+    # the "sales territories" caveat is stored once for the topic, not repeated in each note
+    location = notes[notes['topic'] == 'location']
+    assert len(location) == 1 and 'sales territories' not in location.iloc[0]['note']
+    assert 'sales territories' in data_prep.TOPIC_CAVEATS['location']
 
 
 def test_same_state_with_two_locations_is_flagged(dfs, tmp_path):
@@ -200,6 +219,10 @@ def test_original_data_files_load_cleanly():
     assert problems + load_problems == []
     assert data_prep.key_checks(tables)['key is unique'].all()
     assert data_prep.relationship_checks(tables)['unmatched rows'].sum() == 0
+    # SH11 phone, SH07 NY, FL and NC Location pairs / Orlando's two stores / Website blanks
+    notes = data_prep.data_quality_notes(tables)
+    assert data_prep.notes_summary(notes) == '4 to review · 1 info · 1 expected'
+    assert (notes['topic'] == 'location').sum() == 3
 
 
 # ---------------------------------------------------------- sales model

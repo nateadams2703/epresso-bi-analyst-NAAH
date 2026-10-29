@@ -223,10 +223,10 @@ def build_sales_model(tables: dict):
 # ---------------------------------------------------------- data quality
 WEBSITE_TYPE = 'Website'  # StoreType of the online store (SH00 in the original data)
 
-# Blanks we expect on Website rows: no physical address, and no in-store survey.
+# Blanks we expect on Website rows, and why.
 EXPECTED_WEBSITE_BLANKS = {
-    'Stores': ['City', 'State', 'PostalCode'],
-    'Survey': ['Satisfaction', 'Interest'],
+    'Stores': (['City', 'State', 'PostalCode'], 'the website has no physical address'),
+    'Survey': (['Satisfaction', 'Interest'], 'no in-store survey is taken for the website'),
 }
 
 PHONE_PATTERNS = [re.compile(r'^\(\d{3}\) \d{3}-\d{4}$'),  # (407) 555-9773
@@ -251,44 +251,55 @@ LOCATION_STATES = {
     'West': {'AK', 'CA', 'CO', 'HI', 'ID', 'MT', 'NV', 'OR', 'UT', 'WA', 'WY'},
 }
 TERRITORY_CAVEAT = ("E-Presso's Location values may be company sales territories rather than "
-                    'standard geography, so this may be intentional.')
+                    'standard geography, so these possible inconsistencies may be intentional.')
+
+# A caveat that applies to a whole group of notes is stored once, by topic, and shown once
+# under that group instead of being repeated in every note.
+TOPIC_CAVEATS = {'location': TERRITORY_CAVEAT}
+
+# Most important first; the words are used in the summary line ("4 to review · 1 info ...").
+LEVEL_ORDER = {'Review': 'to review', 'Info': 'info', 'Expected': 'expected'}
 
 
 def data_quality_notes(tables: dict) -> pd.DataFrame:
     """Plain-English data-quality notes, found by rules (no store is named in the code),
-    so they also work on updated data. Levels: Expected, Info, Review."""
+    so they also work on updated data. Sorted by level: Review, then Info, then Expected.
+    `topic` groups related notes (e.g. 'location'); see TOPIC_CAVEATS."""
     notes = []
 
-    def add(table, level, note):
-        notes.append({'table': table, 'level': level, 'note': note})
+    def add(table, level, note, topic=''):
+        notes.append({'table': table, 'level': level, 'topic': topic, 'note': note})
 
     stores = tables.get('Stores')
     website_ids = set()
     if stores is not None:
         website_ids = set(stores.loc[stores['StoreType'] == WEBSITE_TYPE, 'ID'].dropna())
 
-    # Blank values, separating the ones we expect on Website rows.
+    # Blank values. The ones we expect on Website rows are combined into one note.
+    expected_parts, expected_tables = [], []
     for table, df in tables.items():
         store_col = {'Stores': 'ID', 'Survey': 'Store ID'}.get(table)
         on_website = (df[store_col].isin(website_ids) if store_col
                       else pd.Series(False, index=df.index))
+        cols, reason = EXPECTED_WEBSITE_BLANKS.get(table, ([], ''))
+        web_blank_cols = [c for c in cols if (df[c].isna() & on_website).any()]
+        if web_blank_cols:
+            n_rows = int((df[web_blank_cols].isna().any(axis=1) & on_website).sum())
+            expected_parts.append(f'{table} {", ".join(web_blank_cols)} '
+                                  f'({n_rows} Website row(s): {reason})')
+            expected_tables.append(table)
         for col in df.columns:
-            blank = df[col].isna()
-            n_expected = 0
-            if col in EXPECTED_WEBSITE_BLANKS.get(table, []):
-                n_expected = int((blank & on_website).sum())
-            n_other = int(blank.sum()) - n_expected
-            if n_expected:
-                reason = ('the website has no physical address' if table == 'Stores'
-                          else 'no in-store survey is taken for the website')
-                add(table, 'Expected', f'{n_expected} blank {col} value(s) on Website rows: '
-                                       f'{reason}.')
+            blank = df[col].isna() & ~on_website if col in cols else df[col].isna()
+            n_other = int(blank.sum())
             if n_other:
                 extra = ' These rows are left out of revenue totals.' if col == 'Revenue' else ''
-                add(table, 'Review', f'{n_other} blank {col} value(s).{extra}')
+                add(table, 'Review', f'{n_other} blank {col} value(s).{extra}', 'blank')
         n_dup = int(df.duplicated().sum())
         if n_dup:
-            add(table, 'Review', f'{n_dup} fully duplicated row(s).')
+            add(table, 'Review', f'{n_dup} fully duplicated row(s).', 'duplicate')
+    if expected_parts:
+        add(', '.join(expected_tables), 'Expected',
+            f'Blank values on Website rows are expected: {"; ".join(expected_parts)}.', 'website')
 
     if stores is not None:
         _store_notes(stores, add)
@@ -297,16 +308,28 @@ def data_quality_notes(tables: dict) -> pd.DataFrame:
     if sales is not None:
         n_nonpos = int((sales['Revenue'] <= 0).sum())
         if n_nonpos:
-            add('Sales', 'Review', f'{n_nonpos} row(s) with zero or negative Revenue.')
+            add('Sales', 'Review', f'{n_nonpos} row(s) with zero or negative Revenue.',
+                'revenue')
 
     survey = tables.get('Survey')
     if survey is not None:
         for col, (low, high) in SURVEY_SCALES.items():
             n_out = int(((survey[col] < low) | (survey[col] > high)).sum())
             if n_out:
-                add('Survey', 'Review', f'{n_out} {col} value(s) outside the {low}-{high} scale.')
+                add('Survey', 'Review', f'{n_out} {col} value(s) outside the {low}-{high} scale.',
+                    'survey')
 
-    return pd.DataFrame(notes, columns=['table', 'level', 'note'])
+    df = pd.DataFrame(notes, columns=['table', 'level', 'topic', 'note'])
+    rank = df['level'].map({level: i for i, level in enumerate(LEVEL_ORDER)})
+    # a stable sort keeps related notes (e.g. all the Location ones) next to each other
+    return (df.assign(rank=rank).sort_values('rank', kind='stable').drop(columns='rank')
+            .reset_index(drop=True))
+
+
+def notes_summary(notes: pd.DataFrame) -> str:
+    """One line of counts, most important first, e.g. '4 to review · 1 info · 1 expected'."""
+    counts = notes['level'].value_counts()
+    return ' · '.join(f'{int(counts.get(level, 0))} {word}' for level, word in LEVEL_ORDER.items())
 
 
 def _store_notes(stores: pd.DataFrame, add) -> None:
@@ -316,29 +339,30 @@ def _store_notes(stores: pd.DataFrame, add) -> None:
     for _, row in stores.dropna(subset=['Phone']).iterrows():
         if not any(p.match(row['Phone'].strip()) for p in PHONE_PATTERNS):
             add('Stores', 'Review', f'{row["ID"]} phone number "{row["Phone"]}" is not in the '
-                                    f'usual (###) ###-#### format.')
+                                    f'usual (###) ###-#### format.', 'phone')
 
     located = physical.dropna(subset=['City', 'State'])
     for (city, state), group in located.groupby(['City', 'State']):
         if len(group) > 1:
             add('Stores', 'Info', f'{city}, {state} has {len(group)} stores '
                                   f'({", ".join(group["ID"])}). City is not unique, so stores '
-                                  f'are always identified by ID.')
+                                  f'are always identified by ID.', 'city')
 
     # Location vs. state: possible inconsistencies only (see the assumption above).
     for _, row in physical.dropna(subset=['State', 'Location']).iterrows():
         allowed = LOCATION_STATES.get(row['Location'])
         if allowed is None:
             add('Stores', 'Review', f'{row["ID"]} has Location "{row["Location"]}", which is not '
-                                    f'in the reference list, so it could not be checked.')
+                                    f'in the reference list, so it could not be checked.',
+                'location')
         elif row['State'] not in allowed:
             add('Stores', 'Review', f'Possible Location inconsistency to review: {row["ID"]} '
                                     f'({row["City"]}, {row["State"]}) has Location '
                                     f'"{row["Location"]}", which is not a usual region for '
-                                    f'{row["State"]}. {TERRITORY_CAVEAT}')
+                                    f'{row["State"]}.', 'location')
     for state, group in physical.dropna(subset=['State', 'Location']).groupby('State'):
         if group['Location'].nunique() > 1:
             detail = ', '.join(f'{r["ID"]} = {r["Location"]}' for _, r in group.iterrows())
             add('Stores', 'Review', f'Possible Location inconsistency to review: stores in '
-                                    f'{state} have different Location values ({detail}). '
-                                    f'{TERRITORY_CAVEAT}')
+                                    f'{state} have different Location values ({detail}).',
+                'location')
