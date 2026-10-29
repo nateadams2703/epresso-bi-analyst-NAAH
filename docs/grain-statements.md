@@ -1,5 +1,7 @@
 # Grain statements (Guide Section 5)
 
+Reviewed by Audrey on Oct 29, 2026
+
 **Status:** draft for review (Oct 28, 2026). Profiled from the files in `data/` with pandas.
 The row counts below describe the *original* files. The app never relies on them: it counts
 rows from whatever data is currently loaded.
