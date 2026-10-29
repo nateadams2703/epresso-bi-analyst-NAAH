@@ -34,7 +34,8 @@ with st.sidebar:
         st.markdown(f'**{table}:** `{f["name"]}` ({f["source"]})')
 
 tables, load_problems = cached_load(files)
-problems = problems + load_problems
+model, merge_log, model_problems = data_prep.build_sales_model(tables)
+problems = problems + load_problems + model_problems
 for problem in problems:
     st.error(problem)
 if not tables:
@@ -61,6 +62,15 @@ with tab_data:
     right.subheader('Relationship checks')
     right.caption('Rows whose key has no match in the lookup table would drop out of joins.')
     right.dataframe(data_prep.relationship_checks(tables), hide_index=True)
+
+    st.subheader('Merge checks')
+    st.caption('Sales is joined to each lookup table. Rows and revenue must be the same before '
+               'and after every join; otherwise the join duplicated or dropped revenue.')
+    if merge_log.empty:
+        st.info('No joins were run because the Sales table did not load.')
+    else:
+        st.dataframe(merge_log.style.format({'revenue before': '${:,.2f}',
+                                             'revenue after': '${:,.2f}'}), hide_index=True)
 
     st.subheader('Table profiles')
     for table, df in tables.items():

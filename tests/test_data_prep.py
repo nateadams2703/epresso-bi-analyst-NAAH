@@ -200,3 +200,58 @@ def test_original_data_files_load_cleanly():
     assert problems + load_problems == []
     assert data_prep.key_checks(tables)['key is unique'].all()
     assert data_prep.relationship_checks(tables)['unmatched rows'].sum() == 0
+
+
+# ---------------------------------------------------------- sales model
+def test_clean_joins_keep_rows_and_revenue(dfs, tmp_path):
+    tables, _ = load(dfs, tmp_path)
+    model, log, problems = data_prep.build_sales_model(tables)
+    assert problems == []
+    assert len(model) == 3 and model['Revenue'].sum() == 600
+    assert log['unchanged'].all() and (log['unmatched rows'] == 0).all()
+    by_channel = model.groupby('Channel')['Revenue'].sum().to_dict()
+    assert by_channel == {'Website': 100, 'Brick & Mortar': 500}
+    assert set(model['Category']) == {'Beans'} and set(model['Product']) == {'House Blend'}
+
+
+def test_duplicated_store_id_stops_with_fan_out_message(dfs, tmp_path):
+    dfs['Stores'] = pd.concat([dfs['Stores'], dfs['Stores'].iloc[[1]]], ignore_index=True)
+    tables, _ = load(dfs, tmp_path)
+    model, log, problems = data_prep.build_sales_model(tables)
+    assert model is None  # inflated revenue is never handed to the dashboard
+    assert 'revenue from 600.00 to 800.00' in problems[0]  # SH01's 200 counted twice
+    assert not log.iloc[-1]['unchanged']
+
+
+def test_unknown_store_keeps_its_revenue_with_blank_channel(dfs, tmp_path):
+    dfs['Sales'].loc[2, 'Store ID'] = 'SH99'
+    tables, _ = load(dfs, tmp_path)
+    model, log, _ = data_prep.build_sales_model(tables)
+    assert model['Revenue'].sum() == 600
+    assert pd.isna(model.loc[model['Store ID'] == 'SH99', 'Channel']).all()
+    assert log.set_index('merge')['unmatched rows'].iloc[0] == 1
+
+
+def test_month_comes_from_date_even_when_not_month_end(dfs, tmp_path):
+    dfs['Sales'].loc[0, 'Date'] = '2028-02-28'  # 2028 is a leap year
+    tables, _ = load(dfs, tmp_path)
+    model, _, _ = data_prep.build_sales_model(tables)
+    assert (model.loc[0, 'Year'], model.loc[0, 'Month']) == (2028, 2)
+
+
+def test_missing_lookup_table_is_reported_but_model_still_built(dfs, tmp_path):
+    dfs['Products'] = dfs['Products'].drop(columns='Product')
+    tables, _ = load(dfs, tmp_path)
+    model, _, problems = data_prep.build_sales_model(tables)
+    assert 'Channel' in model.columns and 'Product' not in model.columns
+    assert any('Products table did not load' in p for p in problems)
+
+
+def test_original_data_joins_keep_rows_and_revenue():
+    files, _ = data_prep.collect_files()
+    tables, _ = data_prep.load_tables(files)
+    model, log, problems = data_prep.build_sales_model(tables)
+    assert problems == []
+    assert len(model) == len(tables['Sales'])
+    assert model['Revenue'].sum() == tables['Sales']['Revenue'].sum()
+    assert log['unchanged'].all() and (log['unmatched rows'] == 0).all()

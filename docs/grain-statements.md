@@ -51,11 +51,19 @@ store-year. Joining the survey onto Sales would repeat each satisfaction score ~
 To compare satisfaction with revenue, first total revenue to store-year, then attach the survey.
 Never average satisfaction from the joined Sales table.
 
-## Merge-check log (to fill in during Checkpoint 2)
+## Merge-check log
+
+Recorded Oct 29, 2026 from the original files, using `data_prep.build_sales_model()`, which
+runs each join through `check_merge()`. The app recalculates this table on every load
+("Data and profile" → Merge checks), so it also covers updated data.
 
 | Merge | Rows before | Rows after | Revenue sum before | Revenue sum after | Explanation |
 |---|---|---|---|---|---|
-| Sales → Stores | | | | | |
-| Sales → Products | | | | | |
-| Sales → Categories | | | | | |
-| Store-year revenue → Survey | | | | | |
+| Sales → Stores (`Store ID` = `ID`) | 25,200 | 25,200 | $42,174,440.00 | $42,174,440.00 | Many-to-one: each store ID appears once in Stores, and 0 Sales rows are unmatched. Adds `Channel` (from `StoreType`), City, State, Location, Market. The 1,200 Website rows (1 store × 20 products × 60 months) have blank City/State, which is expected. |
+| Sales → Products (`Product ID`) | 25,200 | 25,200 | $42,174,440.00 | $42,174,440.00 | Many-to-one, 0 unmatched. Adds `Product`. |
+| Sales → Categories (`Category ID`) | 25,200 | 25,200 | $42,174,440.00 | $42,174,440.00 | Many-to-one, 0 unmatched. Adds `Category`. |
+| Store-year revenue → Survey | — | — | — | — | Not joined yet. Revenue will be totalled to store × year first, then the survey attached (Checkpoint 2/3). |
+
+If a join ever changes the rows or the revenue sum, `build_sales_model()` returns no model and
+the app shows a plain message instead of revenue figures. A test checks this with a
+duplicated store ID, where revenue goes from 600 to 800.

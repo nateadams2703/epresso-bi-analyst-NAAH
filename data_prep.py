@@ -168,6 +168,58 @@ def relationship_checks(tables: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# ---------------------------------------------------------- joins
+# What each lookup table adds to Sales: {source column: name in the model}.
+# Stores' ID is renamed to 'Store ID' so check_merge() can join on one shared column name,
+# and StoreType is renamed 'Channel' because that is what it means for revenue.
+# The survey is NOT joined here: its grain is store x year, so joining it to Sales would
+# repeat each satisfaction score on ~240 rows (see docs/grain-statements.md).
+LOOKUPS = [
+    ('Stores', 'Store ID', {'ID': 'Store ID', 'StoreType': 'Channel', 'City': 'City',
+                            'State': 'State', 'Location': 'Location', 'Market': 'Market'}),
+    ('Products', 'Product ID', {'Product ID': 'Product ID', 'Product': 'Product'}),
+    ('Categories', 'Category ID', {'Category ID': 'Category ID', 'Category': 'Category'}),
+]
+
+
+def build_sales_model(tables: dict):
+    """Join Sales to Stores, Products, and Categories, and add Year and Month.
+    The model keeps the Sales grain (one row per store x product x month).
+    Every join goes through check_merge(); if one changes the row count or the revenue
+    total, we stop and return no model, because its revenue could not be trusted.
+    Returns (model or None, merge_log, problems)."""
+    if 'Sales' not in tables:
+        return None, pd.DataFrame(), ['The Sales table did not load, so revenue cannot be '
+                                      'calculated.']
+    model = tables['Sales']
+    log, problems = [], []
+    for table, key, columns in LOOKUPS:
+        if table not in tables:
+            problems.append(f'The {table} table did not load, so its columns '
+                            f'({", ".join(c for c in columns.values() if c != key)}) are '
+                            f'missing from the sales model.')
+            continue
+        lookup = tables[table][list(columns)].rename(columns=columns)
+        unmatched = int((~model[key].isin(lookup[key].dropna())).sum())
+        model, report = analytics.check_merge(model, lookup, on=key, value_col='Revenue')
+        log.append({'merge': f'Sales → {table} (on {key})',
+                    'rows before': report['rows_before'], 'rows after': report['rows_after'],
+                    'revenue before': report['sum_before'], 'revenue after': report['sum_after'],
+                    'unmatched rows': unmatched, 'unchanged': not report['changed']})
+        if report['changed']:
+            problems.append(f'Joining {table} changed the Sales rows from '
+                            f'{report["rows_before"]:,} to {report["rows_after"]:,} and revenue '
+                            f'from {report["sum_before"]:,.2f} to {report["sum_after"]:,.2f}. '
+                            f'Usually this means a duplicated {key} in {table}. Revenue results '
+                            f'are not shown until this is fixed.')
+            return None, pd.DataFrame(log), problems
+    # Year and Month come from the date itself, so grouping by month works whatever day
+    # of the month is stored (e.g. 2028-02-28 in a leap year).
+    model = model.assign(Year=model['Date'].dt.year.astype('Int64'),
+                         Month=model['Date'].dt.month.astype('Int64'))
+    return model, pd.DataFrame(log), problems
+
+
 # ---------------------------------------------------------- data quality
 WEBSITE_TYPE = 'Website'  # StoreType of the online store (SH00 in the original data)
 
