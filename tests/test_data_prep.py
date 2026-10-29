@@ -278,3 +278,31 @@ def test_original_data_joins_keep_rows_and_revenue():
     assert len(model) == len(tables['Sales'])
     assert model['Revenue'].sum() == tables['Sales']['Revenue'].sum()
     assert log['unchanged'].all() and (log['unmatched rows'] == 0).all()
+
+
+# ---------------------------------------------------------- loaded-file fingerprint
+def test_fingerprint_tells_two_files_with_the_same_name_apart():
+    """The $1,000 test's first attempt uploaded the original Sales.csv instead of the
+    modified one. Both are named Sales.csv and both show as 'uploaded'; only the row count
+    and revenue sum can tell them apart."""
+    def summary(sales_bytes):
+        files, _ = data_prep.collect_files({'Sales.csv': sales_bytes})
+        tables, _ = data_prep.load_tables(files)
+        return data_prep.loaded_summary(files, tables).set_index('table').loc['Sales']
+    original = summary((data_prep.DATA_DIR / 'Sales.csv').read_bytes())
+    modified = summary((data_prep.DATA_DIR / 'modified' / 'Sales.csv').read_bytes())
+    assert original['file'] == modified['file'] == 'Sales.csv'
+    assert original['source'] == modified['source'] == 'uploaded'
+    assert original['rows'] == modified['rows']
+    assert round(modified['revenue sum'] - original['revenue sum'], 2) == 1000.00
+
+
+def test_fingerprint_shows_sources_and_missing_tables(dfs, tmp_path):
+    uploads = to_uploads(dfs)
+    del uploads['Products.csv']  # no upload and nothing in the (empty) data folder
+    files, _ = data_prep.collect_files(uploads, data_dir=tmp_path)
+    tables, _ = data_prep.load_tables(files)
+    s = data_prep.loaded_summary(files, tables).set_index('table')
+    assert s.loc['Sales', 'revenue sum'] == 600 and s.loc['Sales', 'rows'] == 3
+    assert pd.isna(s.loc['Stores', 'revenue sum'])  # no revenue in Stores
+    assert s.loc['Products', 'source'] == 'missing' and pd.isna(s.loc['Products', 'rows'])

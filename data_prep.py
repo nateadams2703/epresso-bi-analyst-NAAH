@@ -119,6 +119,25 @@ def load_tables(files: dict) -> tuple[dict, list]:
     return tables, problems
 
 
+def loaded_summary(files: dict, tables: dict) -> pd.DataFrame:
+    """One row per expected table: which file was used, where it came from, and a fingerprint
+    (row count, and the revenue sum for tables that hold revenue). Two files can share a name
+    (data/Sales.csv and data/modified/Sales.csv), so the fingerprint is how a person confirms
+    which one is actually loaded, e.g. after uploading a modified file."""
+    rows = []
+    for table, spec in TABLE_SPECS.items():
+        f, df = files.get(table), tables.get(table)
+        revenue = None
+        if df is not None and 'Revenue' in df.columns:
+            revenue = round(float(df['Revenue'].sum()), 2)
+        rows.append({'table': table, 'file': f['name'] if f else spec['file'],
+                     'source': f['source'] if f else 'missing',
+                     'rows': len(df) if df is not None else None,
+                     'columns': df.shape[1] if df is not None else None,
+                     'revenue sum': revenue})
+    return pd.DataFrame(rows)
+
+
 def _fix_types(df: pd.DataFrame, spec: dict, filename: str, problems: list) -> pd.DataFrame:
     """Convert number and date columns. Values that can't be converted become blank,
     and we say how many, so nothing disappears silently."""

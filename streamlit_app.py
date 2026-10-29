@@ -234,10 +234,22 @@ with st.sidebar:
                                 accept_multiple_files=True)
     files, problems = data_prep.collect_files({f.name: f.getvalue() for f in uploaded})
     st.subheader('Loaded from')
-    for table, f in files.items():
-        st.markdown(f'**{table}:** `{f["name"]}` ({f["source"]})')
+    st.caption('Row counts and the revenue sum show which file is really loaded. Two files can '
+               'share a name (e.g. an original and a modified Sales.csv), so check these after '
+               'every upload.')
+    loaded_area = st.container()  # filled in below, once the files have been read
 
 tables, load_problems = cached_load(files)
+summary = data_prep.loaded_summary(files, tables)
+with loaded_area:
+    for _, row in summary.iterrows():
+        if pd.isna(row['rows']):
+            detail = 'not loaded'
+        else:
+            detail = f'{int(row["rows"]):,} rows'
+            if pd.notna(row['revenue sum']):
+                detail += f' · revenue sum ${row["revenue sum"]:,.2f}'
+        st.markdown(md(f'**{row["table"]}:** `{row["file"]}` ({row["source"]}) · {detail}'))
 model, merge_log, model_problems = data_prep.build_sales_model(tables)
 problems = problems + load_problems + model_problems
 for problem in problems:
@@ -276,9 +288,8 @@ tab_data, tab_dash, tab_assistant = st.tabs(['Data and profile', 'Dashboard', 'A
 
 with tab_data:
     st.subheader('Loaded tables')
-    st.dataframe(pd.DataFrame([{'table': table, 'file': files[table]['name'],
-                                'source': files[table]['source'], 'rows': len(df),
-                                'columns': df.shape[1]} for table, df in tables.items()]),
+    st.dataframe(summary.style.format({'rows': '{:,.0f}', 'columns': '{:,.0f}',
+                                       'revenue sum': '${:,.2f}'}, na_rep=''),
                  hide_index=True)
 
     st.subheader('Data-quality notes')

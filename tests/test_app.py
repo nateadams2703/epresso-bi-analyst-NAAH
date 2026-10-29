@@ -173,3 +173,16 @@ def test_website_share_is_zero_when_only_physical_stores_are_selected():
     at = run(channel=['Brick & Mortar'])
     assert_no_errors(at)
     assert kpis(at)['Website share'] == '0.0%'
+
+
+# ---------------------------------------------------------------- loaded-file fingerprint
+def test_sidebar_shows_rows_and_revenue_sum_for_each_loaded_file():
+    files, _ = data_prep.collect_files()
+    tables, _ = data_prep.load_tables(files)
+    revenue = tables['Sales']['Revenue'].sum()
+    at = run()
+    lines = [m.value for m in at.sidebar.markdown]
+    assert (f'**Sales:** `Sales.csv` (original (data/)) · {len(tables["Sales"]):,} rows · '
+            f'revenue sum \\${revenue:,.2f}') in lines
+    assert any(line.startswith('**Stores:**') and line.endswith(f'{len(tables["Stores"])} rows')
+               for line in lines)
