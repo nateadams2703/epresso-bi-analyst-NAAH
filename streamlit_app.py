@@ -88,8 +88,14 @@ with tab_data:
             right.dataframe(profile['dtypes'], hide_index=True)
 
 with tab_dash:
-    st.info('TODO: KPIs, filters, and at least three charts go here. '
-            'Calculate everything from the loaded data. Never hardcode results.')
+    total = analytics.get_total_revenue(model)
+    if total.error:
+        st.warning(total.error)
+    else:
+        st.metric('Total revenue (all years, all stores, all categories)', f'${total.value:,.2f}')
+        st.caption(f'{total.definition}. Rows used: {total.rows_used:,}. '
+                   + ' '.join(total.caveats))
+    st.info('Coming next: filters (year, channel, store, category) and three charts.')
 
 with tab_assistant:
     st.caption('Mode: rules-based starter. Describe what you actually built here.')

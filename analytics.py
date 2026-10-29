@@ -126,6 +126,56 @@ def group_total(df: pd.DataFrame, value_col: str, group_col: str,
                       rows_used=int(len(work) - n_bad - n_nogroup), caveats=caveats)
 
 
+# ------------------------------------------------------ E-Presso revenue
+# The explicit parameters a revenue tool accepts, and the sales-model column each one filters.
+REVENUE_FILTERS = {'year': 'Year', 'channel': 'Channel', 'store': 'Store ID',
+                   'category': 'Category'}
+REVENUE_DEFINITION = 'Sum of Revenue on the monthly sales rows (one row per store x product x month)'
+
+
+def _revenue_filters(**params) -> tuple[dict, dict]:
+    """Turn explicit parameters into ({column: [values]}, scope). None, 'All', or an empty
+    list means no filter. Years may arrive as text ('2028'), so they become numbers."""
+    filters, scope = {}, {}
+    for param, value in params.items():
+        values = list(value) if isinstance(value, (list, tuple, set)) else [value]
+        values = [v for v in values if v is not None and v != 'All']
+        if param == 'year':
+            values = [int(v) if str(v).isdigit() else v for v in values]
+        scope[param] = 'All' if not values else values[0] if len(values) == 1 else values
+        if values:
+            filters[REVENUE_FILTERS[param]] = values
+    return filters, scope
+
+
+def get_total_revenue(model: pd.DataFrame | None, year=None, channel=None, store=None,
+                      category=None) -> ToolResult:
+    """Total revenue for the chosen year(s), channel(s), store ID(s), and category(ies).
+    Values are checked against the loaded data; an unknown value returns an error result."""
+    name = 'get_total_revenue'
+    filters, scope = _revenue_filters(year=year, channel=channel, store=store,
+                                      category=category)
+    if model is None:
+        return _error(name, 'Revenue cannot be calculated: the sales data did not load or '
+                            'failed a merge check (see the Data and profile tab).', scope)
+    subset, err = _apply_filters(model, filters)
+    if err:
+        return _error(name, err, scope)
+    revenue = pd.to_numeric(subset['Revenue'], errors='coerce')
+    caveats = ['Revenue is not profit: costs are not in the data.']
+    n_missing = int(revenue.isna().sum())
+    if n_missing:
+        caveats.append(f'{n_missing} row(s) with missing revenue were excluded.')
+    if 'Channel' in filters:
+        n_no_channel = int(model['Channel'].isna().sum())
+        if n_no_channel:
+            caveats.append(f'{n_no_channel} row(s) with no channel (store not found in Stores) '
+                           f'are excluded by the channel filter.')
+    return ToolResult(tool=name, value=round(float(revenue.sum()), 2),
+                      definition=REVENUE_DEFINITION, scope=scope,
+                      rows_used=int(revenue.notna().sum()), caveats=caveats)
+
+
 def data_quality_report(df: pd.DataFrame) -> ToolResult:
     """Row count, duplicate rows, and missing values per column."""
     missing = {c: int(n) for c, n in df.isna().sum().items() if n > 0}
