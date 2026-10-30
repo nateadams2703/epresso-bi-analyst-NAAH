@@ -67,6 +67,19 @@ def test_store_trends_reports_market_tier_rank_and_tier_medians(trends):
     assert any('Market tier' in c for c in r.caveats)
 
 
+def test_store_trends_distance_from_tier_median_and_counts(trends):
+    r = analytics.get_store_trends(trends)
+    gap = {s['store']: s['vs_tier_median_pts'] for s in r.value['stores']}
+    # 1-Small median -20: SH01 -50 -> -30, SH02 +10 -> +30; 4-Large median -5: SH03 -20 -> -15
+    assert gap == {'SH01': -30.0, 'SH03': -15.0, 'SH02': 30.0, 'SH04': 15.0}
+    assert r.value['stores_compared'] == 4 and r.value['stores_declined'] == 2
+
+
+def test_store_breakdown_includes_market_tier(trends):
+    r = analytics.get_revenue_breakdown(trends, 'store')
+    assert {x['store']: x['market'] for x in r.value}['SH03'] == '4-Large'
+
+
 def test_store_trends_when_no_store_declined(trends):
     trends.loc[4, 'Revenue'] = 150.0   # SH01 2026: 100 -> 150
     trends.loc[8, 'Revenue'] = 1200.0  # SH03 2026: 1000 -> 1200

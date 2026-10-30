@@ -374,10 +374,12 @@ with tab_assistant:
         with st.chat_message('user'):
             st.write(item['question'])
         with st.chat_message('assistant'):
-            st.markdown(md(f"**Scope:** {item['answer']['scope']}"))
-            st.markdown(md(f"**Findings:** {item['answer']['findings']}"))
-            if item['answer']['interpretation']:
-                st.markdown(md(f"**Interpretation:** {item['answer']['interpretation']}"))
+            answer = item['answer']
+            st.markdown(md(f"**{answer['scope']}**"))
+            for title, key in (('Findings', 'findings'), ('Interpretation', 'interpretation'),
+                               ('Next steps', 'next_steps')):
+                if answer[key]:
+                    st.markdown(md(f'**{title}**\n' + '\n'.join(f'- {x}' for x in answer[key])))
             with st.expander('Tool-call log'):
                 st.json(item['answer']['tool_log'])
     question = st.chat_input('Ask a question about the loaded data')

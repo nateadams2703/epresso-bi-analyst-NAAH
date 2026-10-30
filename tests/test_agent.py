@@ -181,7 +181,9 @@ def test_same_question_after_upload_gives_the_new_answer_and_the_log_shows_it(ct
 # ---------------------------------------------------------------- moved from the starter tests
 def test_unsupported_question(ctx):
     out = agent.answer_question('What is the meaning of life?', ctx)
-    assert 'cannot answer' in out['findings'] and out['tool_log'] == []
+    assert out['intent'] is None and out['tool_log'] == []
+    assert "can't answer" in out['findings'][0]
+    assert any('Should E-Presso close the Chicago store?' in s for s in out['next_steps'])
 
 
 def test_data_quality_question_still_works_through_the_dispatcher(ctx):

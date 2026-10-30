@@ -243,12 +243,16 @@ def get_revenue_breakdown(model: pd.DataFrame | None, by, year=None, channel=Non
     grouped = valid.groupby(cols)['Revenue'].sum()
     total = float(grouped.sum())
     labels = store_labels(model) if 'store' in dims else {}
+    tiers = (model.drop_duplicates('Store ID').set_index('Store ID')['Market']
+             if 'store' in dims and 'Market' in model.columns else pd.Series(dtype=object))
     records = []
     for keys, revenue in grouped.items():
         keys = keys if isinstance(keys, tuple) else (keys,)
         record = {dim: _plain(key) for dim, key in zip(dims, keys)}
         if 'store' in dims:
             record['store_label'] = labels.get(record['store'], record['store'])
+            if record['store'] in tiers.index:
+                record['market'] = _plain(tiers[record['store']])
         record['revenue'] = round(float(revenue), 2)
         record['share_pct'] = round(float(revenue) / total * 100, 4) if total else None
         records.append(record)
@@ -379,14 +383,21 @@ def get_store_trends(model: pd.DataFrame | None, start_year=None, end_year=None,
                              'median_change_pct': round(float(pd.Series(pcts).median()), 2)
                              if pcts else None,
                              'stores_declined': sum(p < 0 for p in pcts)})
+    medians = {t['market']: t['median_change_pct'] for t in tier_summary}
+    for row in stores:  # how far each store is from its tier's median, in percentage points
+        median = medians.get(row['market'])
+        row['vs_tier_median_pts'] = (round(row['change_pct'] - median, 2)
+                                     if row['change_pct'] is not None and median is not None
+                                     else None)
     declined = [r['store'] for r in stores if r['change_pct'] is not None and r['change_pct'] < 0]
     value = {'start_year': start, 'end_year': end, 'stores': stores, 'tiers': tier_summary,
+             'stores_compared': len(stores), 'stores_declined': len(declined),
              'declined': declined,
              'largest_decline': stores[0] if declined else None}
     caveats.append(f'Compares {start} with {end} only; the years in between are not used.')
     caveats.append('Stores differ in size (Market tier), so compare percentage change, and '
-                   'compare a store with others in the same tier (rank_in_tier and the tier '
-                   'medians).')
+                   'compare a store with others in the same tier (its rank within the tier and '
+                   'the tier medians).')
     if not declined:
         caveats.append(f"No store's revenue declined between {start} and {end}.")
     no_start = [r['store'] for r in stores if r['change_pct'] is None]
@@ -396,7 +407,7 @@ def get_store_trends(model: pd.DataFrame | None, start_year=None, end_year=None,
     web_ids = sorted(model.loc[model['Channel'] == WEBSITE_TYPE, 'Store ID'].unique())
     if default_channels and web_ids:
         caveats.append(f'The website ({", ".join(web_ids)}) is excluded by default because it is '
-                       f'a different sales channel; pass channel to include it.')
+                       f'a different sales channel; choose the Website channel to include it.')
     elif any(r['store'] in web_ids for r in stores):
         caveats.append('The website is a separate sales channel with its own Market tier, so '
                        'it is not directly comparable with physical stores.')
