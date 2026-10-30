@@ -363,10 +363,11 @@ with tab_dash:
 
 with tab_assistant:
     st.caption('Mode: rules-based starter. Describe what you actually built here.')
-    df = tables.get('Sales')  # temporary: the starter tools work on one table (Checkpoint 3)
-    if df is None:
-        st.warning('The assistant needs the Sales table, which did not load.')
-        st.stop()
+    # The tools read the data loaded right now (an upload is used at once); the fingerprint
+    # records in each tool-call log entry which data that was.
+    ctx = agent.make_context(model, tables, summary)
+    if model is None:
+        st.warning('Revenue questions need the Sales table, which did not load.')
     st.session_state.setdefault('n_questions', 0)
     st.session_state.setdefault('history', [])
     for item in st.session_state['history']:
@@ -385,6 +386,6 @@ with tab_assistant:
             st.warning('Question limit reached for this session. Reload the page to start over.')
         else:
             st.session_state['n_questions'] += 1
-            answer = agent.answer_question(question, df, mode='rules')
+            answer = agent.answer_question(question, ctx, mode='rules')
             st.session_state['history'].append({'question': question, 'answer': answer})
             st.rerun()

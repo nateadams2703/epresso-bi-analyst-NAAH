@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-import agent  # noqa: E402
 import analytics  # noqa: E402
 
 
@@ -55,15 +54,7 @@ def test_merge_fan_out_is_detected(df):
     assert rep['changed'] and rep['sum_after'] > rep['sum_before']
 
 
-def test_dispatcher_rejects_unknown_tool_and_arguments(df):
-    log = []
-    assert agent.run_tool('run_python', {}, df, log).error
-    assert agent.run_tool('get_total', {'value_col': 'amount', 'code': 'x'}, df, log).error
-
-
-def test_unsupported_question(df):
-    out = agent.answer_question('What is the meaning of life?', df)
-    assert 'cannot answer' in out['findings']
+# The starter's dispatcher tests moved to tests/test_agent.py (new Context signature).
 
 
 # ------------------------------------------------------ E-Presso revenue

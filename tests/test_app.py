@@ -186,3 +186,13 @@ def test_sidebar_shows_rows_and_revenue_sum_for_each_loaded_file():
             f'revenue sum \\${revenue:,.2f}') in lines
     assert any(line.startswith('**Stores:**') and line.endswith(f'{len(tables["Stores"])} rows')
                for line in lines)
+
+
+# ---------------------------------------------------------------- assistant tab
+def test_assistant_question_runs_through_the_dispatcher_and_logs_the_data():
+    at = run()
+    at.chat_input[0].set_value('Are there any missing values?').run()
+    assert_no_errors(at)
+    entry = at.session_state['history'][-1]['answer']['tool_log'][0]
+    assert entry['tool'] == 'data_quality_report' and entry['status'] == 'ok'
+    assert entry['data'].startswith('Sales.csv (original (data/)) · 25,200 rows')
