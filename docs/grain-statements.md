@@ -2,7 +2,7 @@
 
 Reviewed by Audrey on Oct 29, 2026
 
-**Status:** Status: reviewed by Nate and Audrey (Oct 29, 2026). Profiled from the files in `data/` with pandas.
+**Status:** reviewed by Nate and Audrey (Oct 29, 2026). Profiled from the files in `data/` with pandas.
 The row counts below describe the *original* files. The app never relies on them: it counts
 rows from whatever data is currently loaded.
 
