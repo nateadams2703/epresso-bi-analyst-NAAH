@@ -1,6 +1,6 @@
 # Grain statements (Guide Section 5)
 
-Reviewed by Audrey on Oct 29, 2026
+reviewed by Nate and Audrey (Oct 29, 2026)
 
 **Status:** reviewed by Nate and Audrey (Oct 29, 2026). Profiled from the files in `data/` with pandas.
 The row counts below describe the *original* files. The app never relies on them: it counts
