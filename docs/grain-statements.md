@@ -64,7 +64,7 @@ runs each join through `check_merge()`. The app recalculates this table on every
 | Sales → Stores (`Store ID` = `ID`) | 25,200 | 25,200 | $42,174,440.00 | $42,174,440.00 | Many-to-one: each store ID appears once in Stores, and 0 Sales rows are unmatched. Adds `Channel` (from `StoreType`), City, State, Location, Market. The 1,200 Website rows (1 store × 20 products × 60 months) have blank City/State, which is expected. |
 | Sales → Products (`Product ID`) | 25,200 | 25,200 | $42,174,440.00 | $42,174,440.00 | Many-to-one, 0 unmatched. Adds `Product`. |
 | Sales → Categories (`Category ID`) | 25,200 | 25,200 | $42,174,440.00 | $42,174,440.00 | Many-to-one, 0 unmatched. Adds `Category`. |
-| Store-year revenue → Survey | — | — | — | — | Not joined yet. Revenue will be totalled to store × year first, then the survey attached (Checkpoint 2/3). |
+| Store-year revenue → Survey (`StoreYear` = `Survey ID`) | 105 | 105 | $42,174,440.00 | $42,174,440.00 | Recorded Oct 30 by `analytics.get_satisfaction_vs_revenue()`. Sales is first totalled to one row per store × year (21 stores × 5 years = 105), then the survey is attached many-to-one. Each satisfaction score is used once, never repeated across sales rows. The 5 Website store-years have blank satisfaction and are excluded from the correlation (100 store-years used). |
 
 If a join ever changes the rows or the revenue sum, `build_sales_model()` returns no model and
 the app shows a plain message instead of revenue figures. A test checks this with a

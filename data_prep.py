@@ -240,7 +240,7 @@ def build_sales_model(tables: dict):
 
 
 # ---------------------------------------------------------- data quality
-WEBSITE_TYPE = 'Website'  # StoreType of the online store (SH00 in the original data)
+WEBSITE_TYPE = analytics.WEBSITE_TYPE  # defined in analytics.py, which the tools also use
 
 # Blanks we expect on Website rows, and why.
 EXPECTED_WEBSITE_BLANKS = {

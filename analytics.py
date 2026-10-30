@@ -136,6 +136,7 @@ def group_total(df: pd.DataFrame, value_col: str, group_col: str,
 REVENUE_FILTERS = {'year': 'Year', 'channel': 'Channel', 'store': 'Store ID',
                    'category': 'Category'}
 REVENUE_DEFINITION = 'Sum of Revenue on the monthly sales rows (one row per store x product x month)'
+WEBSITE_TYPE = 'Website'  # Stores.StoreType (= Channel) of the online store (SH00 in the original data)
 
 
 def _revenue_filters(**params) -> tuple[dict, dict]:
@@ -300,6 +301,264 @@ def get_revenue_change(model: pd.DataFrame | None, year=None, channel=None, stor
                       definition=('Revenue in the last selected year minus revenue in the first '
                                   'selected year, in dollars and as a percent of the first year.'),
                       scope=scope, rows_used=int(rows['Revenue'].notna().sum()), caveats=caveats)
+
+
+# ------------------------------------------------------ assistant tools (Checkpoint 3)
+def _as_list(value) -> list:
+    """A parameter as a list of values; None, 'All', or an empty list mean 'no filter'."""
+    values = list(value) if isinstance(value, (list, tuple, set)) else [value]
+    return [v for v in values if v is not None and v != 'All']
+
+
+def _scope_text(values: list, default: str):
+    return default if not values else values[0] if len(values) == 1 else values
+
+
+def get_store_trends(model: pd.DataFrame | None, start_year=None, end_year=None, channel=None,
+                     category=None, market=None) -> ToolResult:
+    """Each store's revenue in a start and an end year, the change in dollars and percent,
+    and its Market tier, ranked from the largest decline to the largest growth.
+    Physical stores only by default; pass `channel` to include the website.
+    Stores differ in size, so each store is also ranked within its Market tier, and each
+    tier's median change is given."""
+    name = 'get_store_trends'
+    if model is None:
+        return _error(name, 'Revenue cannot be calculated: the sales data did not load or '
+                            'failed a merge check (see the Data and profile tab).')
+    years = sorted(int(y) for y in model['Year'].dropna().unique())
+    start = int(start_year) if str(start_year).isdigit() else (years[0] if years else None)
+    end = int(end_year) if str(end_year).isdigit() else (years[-1] if years else None)
+    markets = _as_list(market)
+    base, market_err = _apply_filters(model, {'Market': markets} if markets else None)
+    channels = _as_list(channel)
+    default_channels = not channels
+    if default_channels:  # physical stores only, among the stores in the chosen tier(s)
+        channels = sorted(c for c in base['Channel'].dropna().unique() if c != WEBSITE_TYPE)
+    scope = {'start_year': start, 'end_year': end,
+             'channel': 'Physical stores only (default)' if default_channels
+             else _scope_text(channels, 'All'),
+             'category': _scope_text(_as_list(category), 'All'),
+             'market': _scope_text(markets, 'All')}
+    if start is None or end is None or start >= end:
+        return _error(name, f'start_year must be earlier than end_year (got {start_year}, '
+                            f'{end_year}). Years in the data: {years}', scope)
+    if market_err:
+        return _error(name, market_err, scope)
+    if not channels:
+        return _error(name, 'No physical stores in the chosen Market tier(s); pass channel to '
+                            'include the website.', scope)
+    rows, _, caveats, err = _select(name, base, [start, end], channels, None, category)
+    if err:
+        err.scope = scope
+        return err
+    rows = rows.dropna(subset=['Revenue'])
+    by_year = rows.groupby(['Store ID', 'Year'])['Revenue'].sum().unstack('Year')
+    tiers = model.drop_duplicates('Store ID').set_index('Store ID')['Market']
+    labels = store_labels(model)
+    stores = []
+    for store_id, revenue in by_year.iterrows():
+        # A year with no sales shows up as NaN after unstack(); it means $0 of revenue.
+        before = float(revenue.get(start)) if pd.notna(revenue.get(start)) else 0.0
+        after = float(revenue.get(end)) if pd.notna(revenue.get(end)) else 0.0
+        stores.append({'store': store_id, 'store_label': labels.get(store_id, store_id),
+                       'market': _plain(tiers.get(store_id)),
+                       f'revenue_{start}': round(before, 2), f'revenue_{end}': round(after, 2),
+                       'change': round(after - before, 2),
+                       'change_pct': round((after - before) / before * 100, 2) if before else None})
+    # Largest decline first; stores with no start-year sales (no % change) go last.
+    stores.sort(key=lambda r: (r['change_pct'] is None, r['change_pct'] or 0))
+    tier_counts = {}
+    for rank, row in enumerate(stores, 1):
+        row['rank_overall'] = rank
+        tier_counts[row['market']] = tier_counts.get(row['market'], 0) + 1
+        row['rank_in_tier'] = tier_counts[row['market']]
+    tier_summary = []
+    for tier in sorted(tier_counts, key=str):
+        pcts = [r['change_pct'] for r in stores if r['market'] == tier and r['change_pct'] is not None]
+        tier_summary.append({'market': tier, 'stores': tier_counts[tier],
+                             'median_change_pct': round(float(pd.Series(pcts).median()), 2)
+                             if pcts else None,
+                             'stores_declined': sum(p < 0 for p in pcts)})
+    declined = [r['store'] for r in stores if r['change_pct'] is not None and r['change_pct'] < 0]
+    value = {'start_year': start, 'end_year': end, 'stores': stores, 'tiers': tier_summary,
+             'declined': declined,
+             'largest_decline': stores[0] if declined else None}
+    caveats.append(f'Compares {start} with {end} only; the years in between are not used.')
+    caveats.append('Stores differ in size (Market tier), so compare percentage change, and '
+                   'compare a store with others in the same tier (rank_in_tier and the tier '
+                   'medians).')
+    if not declined:
+        caveats.append(f"No store's revenue declined between {start} and {end}.")
+    no_start = [r['store'] for r in stores if r['change_pct'] is None]
+    if no_start:
+        caveats.append(f'{len(no_start)} store(s) had no sales in {start}, so they have no '
+                       f'percentage change: {", ".join(no_start)}.')
+    web_ids = sorted(model.loc[model['Channel'] == WEBSITE_TYPE, 'Store ID'].unique())
+    if default_channels and web_ids:
+        caveats.append(f'The website ({", ".join(web_ids)}) is excluded by default because it is '
+                       f'a different sales channel; pass channel to include it.')
+    elif any(r['store'] in web_ids for r in stores):
+        caveats.append('The website is a separate sales channel with its own Market tier, so '
+                       'it is not directly comparable with physical stores.')
+    caveats.append('A change in revenue does not explain why it changed; the reasons are not '
+                   'in the data.')
+    return ToolResult(tool=name, value=value,
+                      definition=(f'Revenue per store in {start} and {end} (sum of monthly sales '
+                                  f'rows), change = {end} minus {start}, change_pct = change as '
+                                  f'a percent of {start}. Ranked from the largest decline.'),
+                      scope=scope, rows_used=len(rows), caveats=caveats)
+
+
+# Rule-of-thumb labels for a correlation's strength (by absolute value), and the store-year
+# count below which a tier's correlation is flagged as a small sample.
+CORRELATION_BANDS = ((0.1, 'near zero'), (0.3, 'weak'), (0.5, 'moderate'), (float('inf'), 'strong'))
+SMALL_SAMPLE = 20
+
+
+def correlation_strength(r: float) -> str:
+    """'near zero', 'weak', 'moderate', or 'strong' for a correlation coefficient."""
+    return next(word for limit, word in CORRELATION_BANDS if abs(r) < limit)
+
+
+def _join_words(items: list) -> str:
+    """'A', 'A and B', or 'A, B, and C'."""
+    if len(items) <= 2:
+        return ' and '.join(items)
+    return ', '.join(items[:-1]) + f', and {items[-1]}'
+
+
+def _tier_correlation_caveat(tiers: list) -> str:
+    """Describe the within-tier correlations from the results themselves, e.g. 'near zero in
+    1-Small (-0.01, n = 30) ...; weak in 4-Large (+0.18, n = 15, a small sample)'."""
+    groups = {}
+    for t in tiers:
+        if t['correlation'] is None:
+            groups.setdefault('not calculable', []).append(f"{t['market']} (n = {t['store_years']})")
+            continue
+        small = ', a small sample' if t['store_years'] < SMALL_SAMPLE else ''
+        groups.setdefault(correlation_strength(t['correlation']), []).append(
+            f"{t['market']} ({t['correlation']:+.2f}, n = {t['store_years']}{small})")
+    return ('Within Market tiers, the correlation is '
+            + '; '.join(f'{word} in {_join_words(items)}' for word, items in groups.items()) + '.')
+
+
+def get_satisfaction_vs_revenue(model: pd.DataFrame | None, survey: pd.DataFrame | None,
+                                year=None, market=None) -> ToolResult:
+    """How each store-year's customer-satisfaction score relates to that store-year's revenue.
+    Revenue is totalled to store x year FIRST and only then joined to the survey (one score
+    per store-year), so no satisfaction score is repeated or averaged across sales rows."""
+    name = 'get_satisfaction_vs_revenue'
+    years = [int(y) if str(y).isdigit() else y for y in _as_list(year)]
+    markets = _as_list(market)
+    scope = {'year': _scope_text(years, 'All'), 'market': _scope_text(markets, 'All')}
+    if model is None:
+        return _error(name, 'Revenue cannot be calculated: the sales data did not load or '
+                            'failed a merge check (see the Data and profile tab).', scope)
+    if survey is None:
+        return _error(name, 'The Survey table did not load, so satisfaction is not available.',
+                      scope)
+    filters = {col: vals for col, vals in (('Year', years), ('Market', markets)) if vals}
+    rows, err = _apply_filters(model, filters)
+    if err:
+        return _error(name, err, scope)
+    revenue = rows.assign(Revenue=pd.to_numeric(rows['Revenue'], errors='coerce'))
+    store_years = (revenue.dropna(subset=['Revenue'])
+                   .groupby(['StoreYear', 'Store ID', 'Channel', 'Market', 'Year'], dropna=False)
+                   ['Revenue'].sum().reset_index())
+    scores = survey[['Survey ID', 'Satisfaction']].rename(columns={'Survey ID': 'StoreYear'})
+    joined, check = check_merge(store_years, scores, on='StoreYear', value_col='Revenue')
+    if check['changed']:
+        return _error(name, f'Attaching the survey changed the store-year rows or revenue '
+                            f'({check}). A Survey ID is probably duplicated.', scope)
+    joined['Satisfaction'] = pd.to_numeric(joined['Satisfaction'], errors='coerce')
+    blank = joined['Satisfaction'].isna()
+    n_web = int((blank & (joined['Channel'] == WEBSITE_TYPE)).sum())
+    n_other = int(blank.sum()) - n_web
+    used = joined[~blank]
+
+    def correlation(df):
+        if len(df) < 3 or df['Satisfaction'].nunique() < 2 or df['Revenue'].nunique() < 2:
+            return None
+        return round(float(df['Satisfaction'].corr(df['Revenue'])), 3)
+
+    tiers = [{'market': _plain(tier), 'store_years': len(g), 'correlation': correlation(g),
+              'mean_satisfaction': round(float(g['Satisfaction'].mean()), 2),
+              'mean_store_year_revenue': round(float(g['Revenue'].mean()), 2)}
+             for tier, g in used.groupby('Market')]
+    value = {'store_years_used': len(used), 'store_years_excluded': int(blank.sum()),
+             'correlation': correlation(used), 'by_tier': tiers,
+             'merge_check': {k: check[k] for k in ('rows_before', 'rows_after', 'sum_before',
+                                                   'sum_after')}}
+    caveats = [f'Based on {len(used)} store-years (one survey score each).']
+    if value['correlation'] is not None:
+        caveats.append(f"Overall (all tiers together) the correlation is "
+                       f"{correlation_strength(value['correlation'])} "
+                       f"({value['correlation']:+.3f}, n = {len(used)}).")
+    if tiers:
+        caveats.append(_tier_correlation_caveat(tiers))
+    caveats += [
+               'Strength labels: |r| below 0.1 near zero, below 0.3 weak, below 0.5 moderate, '
+               f'otherwise strong; fewer than {SMALL_SAMPLE} store-years is a small sample.',
+               'This is an association, not causation: a correlation cannot show that '
+               'satisfaction causes revenue (or that revenue causes satisfaction).',
+               'Market tier confounds the comparison: larger stores earn more whatever their '
+               'satisfaction, so compare the within-tier correlations.',
+               'The survey reflects active customers only; people who stopped shopping at a '
+               'store are not surveyed.',
+               'Revenue is not profit: costs are not in the data.']
+    if n_web:
+        caveats.append(f'{n_web} Website store-year(s) were excluded: there is no in-store '
+                       f'survey for the website, so their satisfaction is blank.')
+    if n_other:
+        caveats.append(f'{n_other} other store-year(s) with no satisfaction score were excluded.')
+    if value['correlation'] is None:
+        caveats.append('Too few store-years (or no variation) to calculate a correlation.')
+    return ToolResult(tool=name, value=value,
+                      definition=('Pearson correlation between satisfaction (0-5 survey score) '
+                                  'and revenue, one point per store-year. Revenue is totalled '
+                                  'to store x year before the survey is attached.'),
+                      scope=scope, rows_used=len(rows), caveats=caveats)
+
+
+# Words in a column name that would mean cost or profit data is available.
+COST_WORDS = ('cost', 'profit', 'margin', 'expense', 'price', 'quantity', 'units')
+
+
+def get_data_coverage(model: pd.DataFrame | None, tables: dict) -> ToolResult:
+    """What the loaded data contains: tables, numeric measures, years, channels, stores,
+    categories, and Market tiers. Used to answer questions the data cannot support (e.g.
+    profit) from facts about the data rather than a canned reply."""
+    name = 'get_data_coverage'
+    measures = {}
+    for table, df in tables.items():
+        cols = [c for c in df.select_dtypes('number').columns if c not in ('Year', 'Month')]
+        if cols:
+            measures[table] = cols
+    cost_cols = [f'{table}.{c}' for table, df in tables.items() for c in df.columns
+                 if any(word in c.lower() for word in COST_WORDS)]
+
+    def values(col):
+        if model is None or col not in model.columns:
+            return []
+        return [_plain(v) for v in sorted(model[col].dropna().unique())]
+
+    stores = model.drop_duplicates('Store ID') if model is not None else pd.DataFrame()
+    value = {'tables_loaded': sorted(tables), 'measures': measures,
+             'cost_or_profit_columns': cost_cols, 'years': values('Year'),
+             'channels': values('Channel'), 'market_tiers': values('Market'),
+             'categories': values('Category'), 'stores': len(stores),
+             'physical_stores': int((stores['Channel'] != WEBSITE_TYPE).sum())
+             if 'Channel' in stores else 0}
+    caveats = []
+    if not cost_cols:
+        caveats.append('No cost, expense, price, or profit columns are in the loaded data, so '
+                       'profit and margins cannot be calculated. Revenue is not profit.')
+    return ToolResult(tool=name, value=value,
+                      definition=('Description of the loaded data: numeric measures by table, '
+                                  'and the years, channels, Market tiers, categories, and '
+                                  'stores present.'),
+                      scope={'data': 'all loaded tables'},
+                      rows_used=len(model) if model is not None else 0, caveats=caveats)
 
 
 def data_quality_report(df: pd.DataFrame) -> ToolResult:
