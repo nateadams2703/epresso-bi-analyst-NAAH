@@ -1,0 +1,351 @@
+[
+  {
+    "step": "before: sidebar",
+    "time": "14:18:32",
+    "sales": [
+      "Sales: Sales.csv (original (data/)) \u00b7 25,200 rows \u00b7 revenue sum $42,174,440.00"
+    ]
+  },
+  {
+    "step": "before: no filters",
+    "time": "14:18:36",
+    "scope": [
+      "Scope: all years; all channels; all stores; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $42,174,440.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $42.17M",
+      "Website share  64.5%",
+      "Revenue change  +27.9%"
+    ]
+  },
+  {
+    "step": "before: Category = Beans",
+    "time": "14:18:40",
+    "scope": [
+      "Scope: all years; all channels; all stores; Beans. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $5,672,720.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $5.67M",
+      "Website share  64.3%",
+      "Revenue change  +20.1%"
+    ]
+  },
+  {
+    "step": "before: Category cleared",
+    "time": "14:18:49",
+    "scope": [
+      "Scope: all years; all channels; all stores; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $42,174,440.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $42.17M",
+      "Website share  64.5%",
+      "Revenue change  +27.9%"
+    ]
+  },
+  {
+    "step": "retest A: original data/Sales.csv uploaded",
+    "time": "14:18:53",
+    "sales": [
+      "Sales: Sales.csv (uploaded) \u00b7 25,200 rows \u00b7 revenue sum $42,174,440.00"
+    ],
+    "scope": [
+      "Scope: all years; all channels; all stores; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $42,174,440.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $42.17M",
+      "Website share  64.5%",
+      "Revenue change  +27.9%"
+    ]
+  },
+  {
+    "step": "retest A: upload removed",
+    "time": "14:18:57",
+    "sales": [
+      "Sales: Sales.csv (original (data/)) \u00b7 25,200 rows \u00b7 revenue sum $42,174,440.00"
+    ],
+    "scope": [
+      "Scope: all years; all channels; all stores; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $42,174,440.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $42.17M",
+      "Website share  64.5%",
+      "Revenue change  +27.9%"
+    ]
+  },
+  {
+    "step": "retest B: data/modified/Sales.csv uploaded",
+    "time": "14:19:01",
+    "sales": [
+      "Sales: Sales.csv (uploaded) \u00b7 25,200 rows \u00b7 revenue sum $42,175,440.00"
+    ],
+    "scope": [
+      "Scope: all years; all channels; all stores; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $42,175,440.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $42.18M",
+      "Website share  64.5%",
+      "Revenue change  +27.9%"
+    ]
+  },
+  {
+    "step": "item 1: Channel = Brick & Mortar",
+    "time": "14:19:16",
+    "scope": [
+      "Scope: all years; Brick & Mortar; all stores; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $14,956,560.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $14.96M",
+      "Website share  0.0%",
+      "Revenue change  -45.8%"
+    ]
+  },
+  {
+    "step": "items 3-5: Store = SH11",
+    "time": "14:19:25",
+    "scope": [
+      "Scope: all years; all channels; SH11 \u2013 Chicago, IL; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $1,752,090.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $1.75M",
+      "Website share  0.0%",
+      "Revenue change  -66.8%"
+    ]
+  },
+  {
+    "step": "item 8: Category = Beans",
+    "time": "14:19:40",
+    "scope": [
+      "Scope: all years; all channels; all stores; Beans. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $5,673,720.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $5.67M",
+      "Website share  64.2%",
+      "Revenue change  +20.1%"
+    ]
+  },
+  {
+    "step": "after items: filters cleared",
+    "time": "14:19:45",
+    "scope": [
+      "Scope: all years; all channels; all stores; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $42,175,440.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $42.18M",
+      "Website share  64.5%",
+      "Revenue change  +27.9%"
+    ]
+  },
+  {
+    "step": "restore: upload removed",
+    "time": "14:19:49",
+    "sales": [
+      "Sales: Sales.csv (original (data/)) \u00b7 25,200 rows \u00b7 revenue sum $42,174,440.00"
+    ],
+    "scope": [
+      "Scope: all years; all channels; all stores; all categories. Change the filters in the sidebar."
+    ],
+    "exact": [
+      "Exactly $42,174,440.00"
+    ],
+    "metrics": [
+      "Rows21",
+      "Columns9",
+      "Duplicate rows0",
+      "Rows5",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows20",
+      "Columns2",
+      "Duplicate rows0",
+      "Rows25,200",
+      "Columns7",
+      "Duplicate rows0",
+      "Rows105",
+      "Columns5",
+      "Duplicate rows0",
+      "Total revenue  $42.17M",
+      "Website share  64.5%",
+      "Revenue change  +27.9%"
+    ]
+  }
+]
