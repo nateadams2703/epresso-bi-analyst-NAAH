@@ -15,7 +15,7 @@ import pandas as pd
 
 import analytics
 from analytics import ToolResult
-from llm_client import LLMError
+from llm_client import FREE_TIER_LIMITS, LLMError
 
 
 @dataclass
@@ -824,7 +824,11 @@ logger = logging.getLogger('epresso.assistant')
 FALLBACK_REASONS = {
     'missing_key': 'no Gemini API key is configured',
     'key_rejected': 'Gemini rejected the API key',
-    'quota': 'the Gemini free-tier quota is used up for now',
+    'quota': 'a Gemini free-tier limit was reached (requests per minute or per day)',
+    'quota_minute': ('the Gemini per-minute limit was reached (free tier: '
+                     f'{FREE_TIER_LIMITS}); wait a minute and ask again'),
+    'quota_day': ('the Gemini daily limit was reached (free tier: '
+                  f'{FREE_TIER_LIMITS}); it resets the next day'),
     'timeout': 'Gemini did not answer in time',
     'unavailable': 'Gemini could not be reached',
     'bad_response': "Gemini's answer was not in the expected format",
@@ -833,6 +837,14 @@ FALLBACK_REASONS = {
     'call_limit': 'Gemini needed more model or tool calls than allowed for one question',
     'unsupported_number': "Gemini's answer contained a number that is not in any tool result",
 }
+
+# Short names for the session tally in the app ("fallbacks: daily limit 1, number check 2").
+FALLBACK_LABELS = {'missing_key': 'no key', 'key_rejected': 'key rejected',
+                   'quota': 'free-tier limit', 'quota_minute': 'per-minute limit',
+                   'quota_day': 'daily limit', 'timeout': 'timeout',
+                   'unavailable': 'API unavailable', 'bad_response': 'answer format',
+                   'no_tool_called': 'no tool used', 'no_successful_tool': 'tool errors',
+                   'call_limit': 'call limit', 'unsupported_number': 'number check'}
 
 LLM_RULES = SYSTEM_PROMPT + """
 How to work:
@@ -974,6 +986,8 @@ def llm_answer(question: str, ctx: Context, sidebar: dict | None = None,
 
     if client is None:
         return fallback('missing_key')
+    if isinstance(client, LLMError):  # the app could not create a client (e.g. package missing)
+        return fallback(client.kind, str(client))
     model_calls = tool_calls = 0
     try:
         session = client.start(_llm_system(sidebar, use_sidebar), tool_definitions(ctx))

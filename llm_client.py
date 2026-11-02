@@ -14,9 +14,15 @@ DEFAULT_MODEL = 'gemini-3.5-flash-lite'  # stable, supports function calling, fr
 TIMEOUT_SECONDS = 30
 
 
+# Free-tier limits for DEFAULT_MODEL, as shown on AI Studio's rate-limit page for the team's
+# key (checked by Audrey, Nov 2 2026). Google can change them; they are used only in messages.
+FREE_TIER_LIMITS = 'about 15 requests per minute and 500 per day for gemini-3.5-flash-lite'
+
+
 class LLMError(Exception):
     """A failure talking to the model. `kind` is one of: missing_key, key_rejected, quota,
-    timeout, unavailable, bad_response. The message never contains the API key."""
+    quota_minute, quota_day, timeout, unavailable, bad_response. The message never contains
+    the API key."""
 
     def __init__(self, kind: str, message: str):
         super().__init__(message)
@@ -35,7 +41,14 @@ def _as_llm_error(exc: Exception, key: str | None) -> LLMError:
     code = getattr(exc, 'code', None)
     upper = message.upper()
     if code == 429 or 'RESOURCE_EXHAUSTED' in upper:
-        return LLMError('quota', 'The Gemini free-tier quota is used up for now (429).')
+        # Gemini names the limit in the error details, e.g. quotaId
+        # "GenerateRequestsPerDayPerProjectPerModel-FreeTier".
+        compact = upper.replace(' ', '').replace('_', '')
+        if 'PERDAY' in compact:
+            return LLMError('quota_day', 'Gemini daily request limit reached (429).')
+        if 'PERMINUTE' in compact:
+            return LLMError('quota_minute', 'Gemini per-minute limit reached (429).')
+        return LLMError('quota', 'Gemini free-tier limit reached (429).')
     if code in (401, 403) or 'API_KEY_INVALID' in upper or 'API KEY NOT VALID' in upper:
         return LLMError('key_rejected', 'Gemini rejected the API key.')
     if 'TIMEOUT' in type(exc).__name__.upper() or 'TIMED OUT' in upper:

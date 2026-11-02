@@ -17,6 +17,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import analytics  # noqa: E402
 import data_prep  # noqa: E402
+import llm_client  # noqa: E402
+from fakes import FakeClient, answer  # noqa: E402
 
 APP = os.path.join(ROOT, 'streamlit_app.py')
 UNESCAPED_DOLLAR = re.compile(r'(?<!\\)\$')  # a $ without a backslash before it
@@ -30,9 +32,21 @@ def model():
     return data_prep.build_sales_model(tables)[0]
 
 
-def run(**filters):
-    """Open the app, set the sidebar filters (e.g. store=['SH11']), and return it."""
-    at = AppTest.from_file(APP, default_timeout=90).run()
+@pytest.fixture(autouse=True)
+def no_real_gemini(monkeypatch):
+    """No app test may ever create a real Gemini client (no network, no quota), even if a
+    real key is later put in a local .streamlit/secrets.toml."""
+    def refuse(*args, **kwargs):
+        raise AssertionError('tests must not create a real Gemini client')
+    monkeypatch.setattr(llm_client, 'GeminiClient', refuse)
+
+
+def run(gemini_key='', **filters):
+    """Open the app, set the sidebar filters (e.g. store=['SH11']), and return it.
+    The Gemini key is empty unless a test passes one (with a fake client)."""
+    at = AppTest.from_file(APP, default_timeout=90)
+    at.secrets['GEMINI_API_KEY'] = gemini_key
+    at.run()
     for param, values in filters.items():
         at.multiselect(key=f'filter_{param}').set_value(values).run()
     return at
@@ -119,6 +133,7 @@ def test_single_year_has_no_revenue_change():
 
 def test_selection_missing_from_new_data_is_cleared_with_a_note():
     at = AppTest.from_file(APP, default_timeout=90)
+    at.secrets['GEMINI_API_KEY'] = ''
     at.session_state['filter_store'] = ['SH99']  # e.g. a store removed in an uploaded file
     at.run()
     assert_no_errors(at)
@@ -252,6 +267,7 @@ def test_sidebar_filters_apply_to_questions_until_switched_off():
 
 def test_question_limit_stops_at_15_with_a_clear_message():
     at = AppTest.from_file(APP, default_timeout=90)
+    at.secrets['GEMINI_API_KEY'] = ''
     at.session_state['n_questions'] = 14
     at.run()
     ask_app(at, 'What was revenue in 2028?')  # the 15th question is still answered
@@ -273,3 +289,75 @@ def test_dollar_signs_in_answers_are_escaped(question):
     at = ask_app(run(), question)
     assert any('$' in t for t in markdown_texts(at))  # the answer does contain dollars
     assert [t for t in markdown_texts(at) if UNESCAPED_DOLLAR.search(t)] == []
+
+
+
+# ---------------------------------------------------------------- Option A: Gemini mode
+def use_fake_gemini(monkeypatch, *script):
+    """Make the app's Gemini client a fake that plays back `script` (no network)."""
+    fake = FakeClient(*script)
+    monkeypatch.setattr(llm_client, 'GeminiClient', lambda key, model=None: fake)
+    return fake
+
+
+def mode(at):
+    return at.radio(key='assistant_mode').value
+
+
+def captions(at):
+    return [c.value for c in at.caption]
+
+
+def test_without_a_key_the_assistant_defaults_to_rules():
+    at = run()
+    assert mode(at) == 'Rules-based (Option B)'
+    ask_app(at, 'What was revenue in 2028?')
+    assert 'Answered by: rules-based assistant' in captions(at)
+
+
+def test_with_a_key_gemini_answers_and_is_labelled(monkeypatch):
+    use_fake_gemini(monkeypatch, [('get_total_revenue', {'year': [2028], 'channel': ['Website']})],
+                    'done', answer('The website earned $6.34 million in 2028.'))
+    at = run(gemini_key='test-key')
+    assert mode(at) == 'Gemini (language model, Option A)'
+    ask_app(at, 'How much revenue did the website generate in 2028?')
+    assert_no_errors(at)
+    assert 'Answered by: Gemini (fake-gemini), function calling · 3 model calls' in captions(at)
+    assert any('The website earned \\$6.34 million in 2028.' in m.value for m in at.markdown)
+    assert 'Gemini answered 1 of 1 questions sent to it this session.' in captions(at)
+
+
+def test_daily_limit_falls_back_with_a_clear_message(monkeypatch):
+    use_fake_gemini(monkeypatch, llm_client.LLMError('quota_day', 'Gemini daily limit (429).'))
+    at = ask_app(run(gemini_key='test-key'), 'How much revenue did the website generate in 2028?')
+    notice = ' '.join(i.value for i in at.info)
+    assert 'daily limit was reached' in notice and 'rules-based assistant answered' in notice
+    assert 'Answered by: rules-based assistant' in captions(at)
+    assert ('Gemini answered 0 of 1 questions sent to it this session; fallbacks: daily limit 1.'
+            in captions(at))
+
+
+def test_number_check_fallback_shows_details_and_what_gemini_tried(monkeypatch):
+    use_fake_gemini(monkeypatch, [('get_total_revenue', {'year': [2028]})], 'done',
+                    answer('Revenue was $9.9M in 2028.'))
+    at = ask_app(run(gemini_key='test-key'), 'What was revenue in 2028?')
+    notice = ' '.join(i.value for i in at.info)
+    assert 'not in any tool result' in notice and 'Details: \\$9.9M' in notice
+    assert any(e.label == 'What Gemini tried before the fallback (1 call)' for e in at.expander)
+
+
+def test_choosing_gemini_without_a_key_says_so():
+    at = run()
+    at.radio(key='assistant_mode').set_value('Gemini (language model, Option A)').run()
+    assert any('No Gemini API key is configured' in w.value for w in at.warning)
+    ask_app(at, 'What was revenue in 2028?')
+    assert any('no Gemini API key is configured' in i.value for i in at.info)
+
+
+def test_the_api_key_is_never_displayed(monkeypatch):
+    key = 'AIza-TEST-SECRET-123'
+    use_fake_gemini(monkeypatch, [('get_total_revenue', {})], 'done',
+                    answer('Total revenue was $42.17M.'))
+    at = ask_app(run(gemini_key=key), 'What was total revenue?')
+    shown = markdown_texts(at) + [w.value for w in at.warning] + [e.label for e in at.expander]
+    assert not any(key in text for text in shown)

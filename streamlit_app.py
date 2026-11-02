@@ -11,6 +11,7 @@ import streamlit as st
 import agent
 import analytics
 import data_prep
+import llm_client
 
 MAX_QUESTIONS = 15  # per-session limit for the assistant
 
@@ -209,6 +210,47 @@ def show_dashboard(model: pd.DataFrame, selection: dict, total) -> None:
         show_data(df[['store', 'store_label', 'Channel', 'revenue', 'share_pct']],
                   money=['revenue'], pct=['share_pct'])
 
+def secret(name: str):
+    """A value from Streamlit Secrets, or None. Secrets are never displayed or logged."""
+    try:
+        return st.secrets.get(name) or None
+    except Exception:  # no secrets file at all, e.g. when running locally without one
+        return None
+
+
+def gemini_client():
+    """A Gemini client using the key in Streamlit Secrets, or an LLMError saying why there is
+    none (the assistant then falls back to the rules-based answer and says so). Created only
+    when a question is asked, so loading the page uses no API quota."""
+    key = secret('GEMINI_API_KEY')
+    if not key:
+        return llm_client.LLMError('missing_key', 'No Gemini API key is configured.')
+    try:
+        return llm_client.GeminiClient(key, secret('GEMINI_MODEL'))
+    except llm_client.LLMError as exc:
+        return exc
+    except ImportError:
+        return llm_client.LLMError('unavailable', 'The google-genai package is not installed.')
+
+
+def show_log(log: list) -> None:
+    """One block per tool call: function, status, arguments as given and as used, which data
+    was loaded, and the raw result."""
+    if not log:
+        st.caption('No tool was run for this question.')
+    for entry in log:
+        st.markdown(md(f"**{entry['call']}. {entry['tool']}** · {entry['status']} · "
+                       f"{entry['rows_used']:,} rows · {entry['duration_ms']} ms"))
+        st.markdown(md(f"Arguments: {json.dumps(entry['arguments'], ensure_ascii=False)}"
+                       f" → used: {json.dumps(entry['arguments_used'], ensure_ascii=False)}"))
+        st.caption(md(f"Data: {entry['data'] or 'not available'}"))
+        st.json(entry['result'], expanded=False)
+
+
+def calls(n: int) -> str:
+    return f"{n} call{'s' if n != 1 else ''}"
+
+
 def show_answer(item: dict) -> None:
     """One question and its answer: scope first, then Findings, Interpretation, Next steps,
     and the tool-call log (function, arguments, raw result) for every tool that was run."""
@@ -216,22 +258,26 @@ def show_answer(item: dict) -> None:
     with st.chat_message('user'):
         st.markdown(md(item['question']))
     with st.chat_message('assistant'):
+        model_calls = f" · {answer['model_calls']} model calls" if answer.get('model_calls') else ''
+        st.caption(md(f"Answered by: {answer.get('answered_by', 'rules-based assistant')}"
+                      f"{model_calls}"))
+        fallback = answer.get('fallback')
+        if fallback:
+            # details of a failed check help explain the fallback; raw API errors are not shown
+            shown = ('unsupported_number', 'no_successful_tool', 'call_limit', 'bad_response')
+            detail = f" Details: {fallback['detail']}" if fallback['kind'] in shown else ''
+            st.info(md(fallback['message'] + detail))
         st.markdown(md(f"**{answer['scope']}**"))
         for title, key in (('Findings', 'findings'), ('Interpretation', 'interpretation'),
                            ('Next steps', 'next_steps')):
             if answer[key]:
                 st.markdown(md(f'**{title}**\n' + '\n'.join(f'- {x}' for x in answer[key])))
-        log = answer['tool_log']
-        with st.expander(f"Tool-call log ({len(log)} call{'s' if len(log) != 1 else ''})"):
-            if not log:
-                st.caption('No tool was run for this question.')
-            for entry in log:
-                st.markdown(md(f"**{entry['call']}. {entry['tool']}** · {entry['status']} · "
-                               f"{entry['rows_used']:,} rows · {entry['duration_ms']} ms"))
-                st.markdown(md(f"Arguments: {json.dumps(entry['arguments'], ensure_ascii=False)}"
-                               f" → used: {json.dumps(entry['arguments_used'], ensure_ascii=False)}"))
-                st.caption(md(f"Data: {entry['data'] or 'not available'}"))
-                st.json(entry['result'], expanded=False)
+        with st.expander(f"Tool-call log ({calls(len(answer['tool_log']))})"):
+            show_log(answer['tool_log'])
+        attempt = answer.get('llm_attempt_log')
+        if fallback and attempt:
+            with st.expander(f'What Gemini tried before the fallback ({calls(len(attempt))})'):
+                show_log(attempt)
 
 
 st.set_page_config(page_title='E-Presso BI Analyst', layout='wide')
@@ -389,10 +435,29 @@ with tab_dash:
 
 with tab_assistant:
     st.subheader('Analytical assistant')
-    st.caption('Mode: rules-based assistant (Option B). It matches each question to fixed '
-               'analysis tools with keyword rules; it does not use a language model. Every '
-               'number comes from a tool run on the data loaded now, and the tool-call log '
-               'under each answer shows the function, its arguments, and the raw result.')
+    has_key = bool(secret('GEMINI_API_KEY'))
+    model_name = secret('GEMINI_MODEL') or llm_client.DEFAULT_MODEL
+    modes = ['Gemini (language model, Option A)', 'Rules-based (Option B)']
+    mode = st.radio('Assistant mode', modes, index=0 if has_key else 1, horizontal=True,
+                    key='assistant_mode',
+                    help='Gemini chooses the analysis tools; the rules-based assistant uses '
+                         'keyword rules. Both use the same tools and data.')
+    use_llm = mode == modes[0]
+    if use_llm:
+        st.caption(f'Mode: Gemini ({model_name}) chooses among the fixed analysis tools through '
+                   'function calling; our code runs every tool and checks every number before '
+                   'the answer is shown. If Gemini is unavailable, a free-tier limit is reached, '
+                   'or its answer fails a check, the rules-based assistant answers instead and '
+                   'says why. The tool-call log under each answer shows the function, its '
+                   'arguments, and the raw result.')
+        if not has_key:
+            st.warning('No Gemini API key is configured, so the rules-based assistant will '
+                       'answer instead.')
+    else:
+        st.caption('Mode: rules-based assistant (Option B). It matches each question to fixed '
+                   'analysis tools with keyword rules; it does not use a language model. Every '
+                   'number comes from a tool run on the data loaded now, and the tool-call log '
+                   'under each answer shows the function, its arguments, and the raw result.')
     # The tools read the data loaded right now (an upload is used at once); the fingerprint
     # records in each tool-call log entry which data that was.
     ctx = agent.make_context(model, tables, summary)
@@ -411,6 +476,19 @@ with tab_assistant:
         show_answer(item)
     used = st.session_state['n_questions']
     st.caption(f'Questions used: {used} of {MAX_QUESTIONS} this session.')
+    sent = [h['answer'] for h in st.session_state['history']
+            if h['answer'].get('mode') == 'llm' or h['answer'].get('fallback')]
+    if sent:  # how often Gemini actually answers, and why it did not
+        reasons = {}
+        for a in sent:
+            if a.get('fallback'):
+                label = agent.FALLBACK_LABELS.get(a['fallback']['kind'], a['fallback']['kind'])
+                reasons[label] = reasons.get(label, 0) + 1
+        answered = sum(a.get('mode') == 'llm' for a in sent)
+        tally = f'Gemini answered {answered} of {len(sent)} questions sent to it this session'
+        if reasons:
+            tally += '; fallbacks: ' + ', '.join(f'{k} {n}' for k, n in reasons.items())
+        st.caption(tally + '.')
     if used >= MAX_QUESTIONS:
         st.warning(f"You've reached this session's limit of {MAX_QUESTIONS} questions. Reload "
                    f'the page to start a new session.')
@@ -419,6 +497,8 @@ with tab_assistant:
     if question and used < MAX_QUESTIONS:
         st.session_state['n_questions'] += 1
         answer = agent.answer_question(question, ctx, sidebar=selection,
-                                       use_sidebar=use_sidebar)
+                                       use_sidebar=use_sidebar,
+                                       mode='llm' if use_llm else 'rules',
+                                       client=gemini_client() if use_llm else None)
         st.session_state['history'].append({'question': question, 'answer': answer})
         st.rerun()

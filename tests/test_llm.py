@@ -14,7 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import agent  # noqa: E402
 import data_prep  # noqa: E402
 import llm_client  # noqa: E402
-from llm_client import LLMError, ModelTurn  # noqa: E402
+from llm_client import LLMError  # noqa: E402
+from fakes import FakeClient, answer  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -29,53 +30,6 @@ def context(uploads=None):
 @pytest.fixture(scope='module')
 def ctx():
     return context()
-
-
-class FakeSession:
-    """Plays back a script. A list = the model asks for those tools; a str = a text reply
-    with no tool request; a dict = the final written answer; an LLMError = an API failure."""
-
-    def __init__(self, script, seen):
-        self.script, self.seen = script, seen
-
-    def _next(self):
-        step = self.script.pop(0)
-        if isinstance(step, Exception):
-            raise step
-        return step
-
-    def _turn(self):
-        step = self._next()
-        return ModelTurn(function_calls=step) if isinstance(step, list) else ModelTurn(text=step)
-
-    def send(self, text):
-        self.seen['question'] = text
-        return self._turn()
-
-    def send_tool_results(self, results):
-        self.seen.setdefault('results', []).append(results)
-        return self._turn()
-
-    def final_answer(self, instruction, schema):
-        self.seen['schema'] = schema
-        return self._next()
-
-
-class FakeClient:
-    model = 'fake-gemini'
-
-    def __init__(self, *script):
-        self.script, self.seen = list(script), {}
-
-    def start(self, system, definitions):
-        self.seen['system'], self.seen['definitions'] = system, definitions
-        return FakeSession(self.script, self.seen)
-
-
-def answer(text, findings=(), interpretation=('Revenue is not profit.',),
-           next_steps=('Ask a follow-up question.',)):
-    return {'findings': list(findings) or [text], 'interpretation': list(interpretation),
-            'next_steps': list(next_steps)}
 
 
 def ask(ctx, question, client, **kwargs):
@@ -216,7 +170,8 @@ def test_answer_without_any_tool_falls_back_to_the_capability_list(ctx):
 
 
 # ---------------------------------------------------------------- API failures
-@pytest.mark.parametrize('kind', ['quota', 'timeout', 'unavailable', 'key_rejected'])
+@pytest.mark.parametrize('kind', ['quota', 'quota_minute', 'quota_day', 'timeout',
+                                  'unavailable', 'key_rejected'])
 def test_api_failures_fall_back_with_a_clear_message(ctx, kind):
     out = ask(ctx, 'Total revenue?', FakeClient(LLMError(kind, 'details')))
     assert out['mode'] == 'rules' and out['fallback']['kind'] == kind
@@ -296,6 +251,15 @@ def test_key_is_scrubbed_from_error_messages():
 
 @pytest.mark.parametrize('exc, kind', [
     (type('ClientError', (Exception,), {'code': 429})('429 RESOURCE_EXHAUSTED'), 'quota'),
+    (type('ClientError', (Exception,), {'code': 429})(
+        "429 RESOURCE_EXHAUSTED {'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier'}"),
+     'quota_day'),
+    (type('ClientError', (Exception,), {'code': 429})(
+        "429 RESOURCE_EXHAUSTED {'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier'}"),
+     'quota_minute'),
+    (type('ClientError', (Exception,), {'code': 429})(
+        "RESOURCE_EXHAUSTED quotaId GenerateContentInputTokensPerModelPerMinute-FreeTier"),
+     'quota_minute'),
     (type('ClientError', (Exception,), {'code': 400})('API_KEY_INVALID'), 'key_rejected'),
     (type('ReadTimeout', (Exception,), {})('slow'), 'timeout'),
     (type('ServerError', (Exception,), {'code': 503})('overloaded'), 'unavailable'),
@@ -356,3 +320,21 @@ def test_gemini_client_quota_error_becomes_a_fallback(ctx):
     client = llm_client.GeminiClient(api_key='test-key', sdk_client=stub)
     out = agent.llm_answer('Total revenue?', ctx, client=client)
     assert out['fallback']['kind'] == 'quota'
+
+
+@pytest.mark.parametrize('kind, words', [
+    ('quota_minute', 'per-minute limit was reached'), ('quota_day', 'daily limit was reached')])
+def test_quota_fallback_says_which_limit_was_reached(ctx, kind, words):
+    out = ask(ctx, 'Total revenue?', FakeClient(LLMError(kind, 'Gemini limit reached (429).')))
+    assert words in out['fallback']['message']
+    assert '15 requests per minute and 500 per day' in out['fallback']['message']
+
+
+def test_client_creation_error_falls_back_with_its_own_reason(ctx):
+    out = ask(ctx, 'Total revenue?', LLMError('unavailable', 'google-genai is not installed.'))
+    assert out['fallback']['kind'] == 'unavailable'
+    assert out['fallback']['detail'] == 'google-genai is not installed.'
+
+
+def test_every_fallback_kind_has_a_reason_and_a_short_label():
+    assert set(agent.FALLBACK_REASONS) == set(agent.FALLBACK_LABELS)
