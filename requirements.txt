@@ -1,5 +1,8 @@
-streamlit>=1.40
-pandas>=2.0
-plotly>=5.20
-openpyxl>=3.1
-google-genai>=2.34
+# Pinned to the exact versions the hosted app runs (Nov 2, 2026), so a new release cannot
+# change or break the app during grading. All tests pass with these versions.
+# To upgrade later: change a version, run pytest, check the app locally, then push.
+streamlit==1.66.1
+pandas==3.1.0
+plotly==7.1.0
+openpyxl==3.1.5
+google-genai==2.34.0
