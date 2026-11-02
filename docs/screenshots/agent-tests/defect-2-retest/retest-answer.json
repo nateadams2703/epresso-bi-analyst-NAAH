@@ -1,0 +1,20 @@
+{
+  "check": {
+    "mode_selector_present": true,
+    "gemini_selected_by_default": true,
+    "no_key_warning": false
+  },
+  "answers": [
+    {
+      "name": "defect-2-retest-website-revenue-2028",
+      "time": "2026-11-02 15:08:47",
+      "question": "How much revenue did the website generate in 2028?",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_total_revenue · ok · 240 rows · 8.8 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls\n\nScope: get_total_revenue: 2028 (from your question); Website (from your question).\n\nFindings\n\nThe website channel generated $6,339,640 in revenue in 2028.\n\nInterpretation\n\nRevenue is not profit: costs are not in the data.\nThis figure represents the total gross revenue for the website channel across all stores and product categories in 2028.\n\nNext steps\n\nNo recommendation is supported by this data.\nkeyboard_arrow_down\n\nTool-call log (1 call)\n\n1. get_total_revenue · ok · 240 rows · 8.8 ms\n\nArguments: {\"year\": [2028], \"channel\": [\"Website\"]} → used: {\"year\": [2028], \"channel\": [\"Website\"]}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}"
+    }
+  ]
+}
