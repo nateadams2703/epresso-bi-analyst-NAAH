@@ -15,7 +15,7 @@ import agent  # noqa: E402
 import data_prep  # noqa: E402
 import llm_client  # noqa: E402
 from llm_client import LLMError  # noqa: E402
-from fakes import FakeClient, answer  # noqa: E402
+from fakes import FakeClient, StubSDK, answer  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -250,6 +250,8 @@ def test_key_is_scrubbed_from_error_messages():
 
 
 @pytest.mark.parametrize('exc, kind', [
+    (type('ClientError', (Exception,), {'code': 400})(
+        "400 INVALID_ARGUMENT. Role 'tool' is not supported."), 'bad_request'),
     (type('ClientError', (Exception,), {'code': 429})('429 RESOURCE_EXHAUSTED'), 'quota'),
     (type('ClientError', (Exception,), {'code': 429})(
         "429 RESOURCE_EXHAUSTED {'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier'}"),
@@ -274,22 +276,6 @@ def test_client_without_a_key_raises_missing_key():
     assert err.value.kind == 'missing_key'
 
 
-class StubSDK:
-    """Stands in for google-genai's Client: returns real google-genai response objects."""
-
-    def __init__(self, responses):
-        self.responses, self.requests = list(responses), []
-        self.models = self
-
-    def generate_content(self, model, contents, config):
-        self.requests.append({'model': model, 'roles': [c.role for c in contents],
-                              'config': config})
-        response = self.responses.pop(0)
-        if isinstance(response, Exception):
-            raise response
-        return response
-
-
 def test_gemini_client_round_trip_with_real_types(ctx):
     types = pytest.importorskip('google.genai.types')
 
@@ -309,7 +295,10 @@ def test_gemini_client_round_trip_with_real_types(ctx):
     assert first.automatic_function_calling.disable is True       # the SDK never runs tools
     names = [d.name for d in first.tools[0].function_declarations]
     assert names == list(agent.TOOLS)
-    assert stub.requests[1]['roles'] == ['user', 'model', 'tool']  # results sent as role 'tool'
+    # Defect 2: tool results go back in a 'user' turn as function_response parts ('tool' is
+    # rejected by the live API, and by the stub)
+    assert stub.requests[1]['roles'] == ['user', 'model', 'user']
+    assert stub.requests[1]['contents'][-1].parts[0].function_response.name == 'get_total_revenue'
     assert stub.requests[2]['config'].response_mime_type == 'application/json'
     assert stub.requests[0]['model'] == llm_client.DEFAULT_MODEL == 'gemini-3.5-flash-lite'
 
@@ -338,3 +327,26 @@ def test_client_creation_error_falls_back_with_its_own_reason(ctx):
 
 def test_every_fallback_kind_has_a_reason_and_a_short_label():
     assert set(agent.FALLBACK_REASONS) == set(agent.FALLBACK_LABELS)
+
+
+
+# ---------------------------------------------------------------- defect 2: role 'tool'
+def test_stub_rejects_role_tool_like_the_live_api_and_it_is_a_bad_request():
+    types = pytest.importorskip('google.genai.types')
+    stub = StubSDK([])
+    session = llm_client.GeminiClient(api_key='test-key', sdk_client=stub).start('s', [])
+    session._contents.append(types.Content(role='tool', parts=[types.Part(text='x')]))
+    with pytest.raises(LLMError) as err:
+        session._generate(session._tools_config)
+    assert err.value.kind == 'bad_request'
+    assert str(err.value) == ("Gemini rejected the request (400 INVALID_ARGUMENT): Role 'tool' "
+                              "is not supported. Please use a valid role: SYSTEM, USER, MODEL.")
+
+
+def test_bad_request_fallback_names_the_cause(ctx):
+    out = ask(ctx, 'Total revenue?', FakeClient(LLMError(
+        'bad_request', "Gemini rejected the request (400 INVALID_ARGUMENT): Role 'tool' is not "
+                       "supported.")))
+    assert out['fallback']['kind'] == 'bad_request'
+    assert out['fallback']['reason'] == 'Gemini rejected the request as invalid (400)'
+    assert "Role 'tool' is not supported" in out['fallback']['detail']

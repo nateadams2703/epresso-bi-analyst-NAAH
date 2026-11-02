@@ -12,7 +12,8 @@ live check with the real key is still to do; it will be recorded here.
 3. Our dispatcher, `agent.run_tool()`, checks each request and runs the tool on the data loaded
    now. Unknown tools, unexpected arguments, ambiguous cities, and values not in the data become
    error results. Every call, including errors, is logged.
-4. The results go back to Gemini. This repeats at most until the limits below.
+4. The results go back to Gemini as `function_response` parts in a `user` turn (the live
+   API rejects the role `tool`; see Defect 2). This repeats at most until the limits below.
 5. Gemini writes the answer as JSON: `findings`, `interpretation`, `next_steps`.
 6. **Our code checks the answer before it is shown:**
    - Every number must come from a tool result, a tool argument, or the question. Rounded or
@@ -51,6 +52,7 @@ written to the server log (`epresso.assistant`), with its reason and the questio
 | `quota_minute` | 429: per-minute limit reached ("wait a minute and ask again") |
 | `quota_day` | 429: daily limit reached ("it resets the next day") |
 | `quota` | 429 without saying which limit |
+| `bad_request` | 400 INVALID_ARGUMENT: Gemini rejected the request itself (the notice shows the API's short message; see Defect 2 in `docs/agent-tests.md`) |
 | `timeout` | no answer within 30 seconds |
 | `unavailable` | any other API error, or google-genai not installed |
 | `bad_response` | the written answer was not valid JSON in the expected shape |

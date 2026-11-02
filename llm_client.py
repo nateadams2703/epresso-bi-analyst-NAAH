@@ -21,8 +21,8 @@ FREE_TIER_LIMITS = 'about 15 requests per minute and 500 per day for gemini-3.5-
 
 class LLMError(Exception):
     """A failure talking to the model. `kind` is one of: missing_key, key_rejected, quota,
-    quota_minute, quota_day, timeout, unavailable, bad_response. The message never contains
-    the API key."""
+    quota_minute, quota_day, bad_request, timeout, unavailable, bad_response. The message
+    never contains the API key."""
 
     def __init__(self, kind: str, message: str):
         super().__init__(message)
@@ -51,6 +51,12 @@ def _as_llm_error(exc: Exception, key: str | None) -> LLMError:
         return LLMError('quota', 'Gemini free-tier limit reached (429).')
     if code in (401, 403) or 'API_KEY_INVALID' in upper or 'API KEY NOT VALID' in upper:
         return LLMError('key_rejected', 'Gemini rejected the API key.')
+    if code == 400 or 'INVALID_ARGUMENT' in upper:
+        # The request itself was wrong (e.g. Defect 2: an unsupported role). Keep the API's own
+        # short message, without the key, so the cause is visible in the app and the log.
+        short = scrub(getattr(exc, 'message', None) or message, key)[:200]
+        return LLMError('bad_request', f'Gemini rejected the request (400 INVALID_ARGUMENT): '
+                                       f'{short}')
     if 'TIMEOUT' in type(exc).__name__.upper() or 'TIMED OUT' in upper:
         return LLMError('timeout', f'Gemini did not answer within {TIMEOUT_SECONDS} seconds.')
     if code == 404:
@@ -106,11 +112,13 @@ class GeminiSession:
         return self._turn(self._generate(self._tools_config))
 
     def send_tool_results(self, results: list) -> ModelTurn:
-        """Return our tool results (name, result dict) to the model, as the docs show."""
+        """Return our tool results (name, result dict) to the model as function_response parts
+        in a 'user' turn. The live API only accepts the roles 'user' and 'model' here; 'tool'
+        was rejected with 400 INVALID_ARGUMENT (Defect 2, docs/agent-tests.md)."""
         types = self._types
         parts = [types.Part.from_function_response(name=name, response={'result': result})
                  for name, result in results]
-        self._contents.append(types.Content(role='tool', parts=parts))
+        self._contents.append(types.Content(role='user', parts=parts))
         return self._turn(self._generate(self._tools_config))
 
     def final_answer(self, instruction: str, schema: dict) -> dict:

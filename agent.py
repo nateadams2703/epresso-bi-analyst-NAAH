@@ -829,6 +829,7 @@ FALLBACK_REASONS = {
                      f'{FREE_TIER_LIMITS}); wait a minute and ask again'),
     'quota_day': ('the Gemini daily limit was reached (free tier: '
                   f'{FREE_TIER_LIMITS}); it resets the next day'),
+    'bad_request': 'Gemini rejected the request as invalid (400)',
     'timeout': 'Gemini did not answer in time',
     'unavailable': 'Gemini could not be reached',
     'bad_response': "Gemini's answer was not in the expected format",
@@ -841,7 +842,8 @@ FALLBACK_REASONS = {
 # Short names for the session tally in the app ("fallbacks: daily limit 1, number check 2").
 FALLBACK_LABELS = {'missing_key': 'no key', 'key_rejected': 'key rejected',
                    'quota': 'free-tier limit', 'quota_minute': 'per-minute limit',
-                   'quota_day': 'daily limit', 'timeout': 'timeout',
+                   'quota_day': 'daily limit', 'bad_request': 'invalid request',
+                   'timeout': 'timeout',
                    'unavailable': 'API unavailable', 'bad_response': 'answer format',
                    'no_tool_called': 'no tool used', 'no_successful_tool': 'tool errors',
                    'call_limit': 'call limit', 'unsupported_number': 'number check'}

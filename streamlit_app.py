@@ -264,7 +264,8 @@ def show_answer(item: dict) -> None:
         fallback = answer.get('fallback')
         if fallback:
             # details of a failed check help explain the fallback; raw API errors are not shown
-            shown = ('unsupported_number', 'no_successful_tool', 'call_limit', 'bad_response')
+            shown = ('unsupported_number', 'no_successful_tool', 'call_limit', 'bad_response',
+                     'bad_request')
             detail = f" Details: {fallback['detail']}" if fallback['kind'] in shown else ''
             st.info(md(fallback['message'] + detail))
         st.markdown(md(f"**{answer['scope']}**"))

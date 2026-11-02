@@ -361,3 +361,15 @@ def test_the_api_key_is_never_displayed(monkeypatch):
     at = ask_app(run(gemini_key=key), 'What was total revenue?')
     shown = markdown_texts(at) + [w.value for w in at.warning] + [e.label for e in at.expander]
     assert not any(key in text for text in shown)
+
+
+
+def test_bad_request_notice_shows_the_short_api_message(monkeypatch):
+    use_fake_gemini(monkeypatch, llm_client.LLMError(
+        'bad_request', "Gemini rejected the request (400 INVALID_ARGUMENT): Role 'tool' is not "
+                       "supported."))
+    at = ask_app(run(gemini_key='test-key'), 'What was revenue in 2028?')
+    notice = ' '.join(i.value for i in at.info)
+    assert 'Gemini rejected the request as invalid (400)' in notice
+    assert "Details: Gemini rejected the request (400 INVALID_ARGUMENT): Role 'tool'" in notice
+    assert 'fallbacks: invalid request 1' in ' '.join(c.value for c in at.caption)

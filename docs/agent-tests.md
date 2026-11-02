@@ -3,8 +3,9 @@
 **Assistant tested:** rules-based assistant (Option B) in the app's Assistant tab. It matches
 questions to fixed tools with keyword rules and does not use a language model.
 
-**Status (Nov 2, 2026):** all five tests were run and **passed**, and one defect was found,
-fixed, and retested (the "Extra" row).
+**Status (Nov 2, 2026):** all five tests were run and **passed** in rules-based mode. Defect 1
+was found, fixed, and retested (the "Extra" row). Defect 2 was found in the first live Gemini
+call and fixed; its retest on the hosted app is pending.
 
 **How the five tests were run:** the tests were **automated on the hosted app**
 (https://nate-audrey-epresbianalyst.streamlit.app/) on Nov 2, 14:20:29–14:21:14. At Nate's request,
@@ -76,3 +77,17 @@ Nate asked the Assistant tab seven questions locally. Six were answered well:
 
 The seventh found Defect 1. This was an informal check; the formal tests are recorded in the
 table above.
+
+## Defect 2: the first live Gemini call failed (role 'tool' rejected)
+
+| Item | Entry |
+|---|---|
+| Found by | Nate, Nov 2, 2026, after adding the Gemini key to Streamlit Cloud: the first live question in Gemini mode was answered by the rules-based assistant, so he checked the Streamlit Cloud log |
+| Question | "How much revenue did the website generate in 2028?" (agent test 1), the first question asked in Gemini mode on the hosted app, at about 14:58 on Nov 2, 2026 (time from the Streamlit Cloud log line) |
+| Expected behavior | Gemini requests a tool, our dispatcher runs it, the result goes back to Gemini, and Gemini writes the answer ("Answered by: Gemini (gemini-3.5-flash-lite), function calling"). |
+| Actual result | **The fallback worked as designed:** the rules-based assistant answered, labelled with a notice. But the notice gave the wrong reason: "Gemini could not be reached" (`unavailable`). The server log showed the real cause: `Assistant fallback (unavailable): Gemini request failed: 400 INVALID_ARGUMENT. Role 'tool' is not supported. Please use a valid role: SYSTEM, SYSTEM_1, USER, ASSISTANT, DEVELOPER, CONTEXT, USER_CONTEXT, MODEL, USER.` |
+| Cause | `llm_client.py` sent our tool results back to Gemini in a message with `role='tool'`. I (Claude) took that role from a summary of the google-genai README while building part (a), and could not check it against the live API, because tests must not use the API. The live API accepts only `user` and `model` here. **Why the tests missed it:** the stand-in for the SDK (`StubSDK`) accepted any role, and the real-types test even asserted `'tool'`, so it locked the bug in. **Second problem:** `llm_client._as_llm_error()` labelled every unrecognised error, including this 400, as "could not be reached", which hid the cause from the app's notice. |
+| Fix (Nov 2) | (1) Tool results are sent as `function_response` parts in a `role='user'` turn. (2) A new fallback kind, `bad_request`, for 400 INVALID_ARGUMENT: the notice says "Gemini rejected the request as invalid (400)" and shows the API's short message; an invalid key, also a 400, is still `key_rejected`. (3) `StubSDK`, now in `tests/fakes.py`, rejects any role except `user` and `model` with the same 400 as the live API. The `FakeClient` works above roles (it fakes `send_tool_results` itself), so it could not catch this bug; the request-level stub can. |
+| Tests | The round-trip test expects the roles `user, model, user` and a `function_response` part. A new test sends a role `'tool'` message to the stub and gets `bad_request` with the API's message. New fallback and app tests show the notice with the short API message. **With `role='tool'` put back temporarily, the round-trip test fails** (the answer falls back to rules); with the fix it passes. All 294 tests pass with google-genai installed. |
+| Retest | **Pending:** after this fix is pushed and the hosted app is rebooted, ask the same question in Gemini mode and confirm "Answered by: Gemini (…)". Record the date, the question, the answer label, and the tool-call log here. |
+| Lesson | The fallback did its job (the manager still got a correct, labelled answer), and the server log made the cause visible. But a test double is only as good as the rules it enforces: our stub did not enforce the API's rules about roles. |
