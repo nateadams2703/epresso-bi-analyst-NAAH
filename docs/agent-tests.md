@@ -117,9 +117,11 @@ the earlier results and the independent pandas check.
 - **Number formatting:** in the extra question, Gemini wrote raw numbers ("8969470", "share
   percentage of 70.6802") where the earlier run wrote "$8,969,470" and "70.68%". The values are
   correct and pass the number check; only readability got worse.
-- **Scope of test 2:** the scope line says "physical stores only (the tool's default)" but not
-  the years 2025 → 2029. The tool used its default years, and the scope line is built only from
-  the arguments that were passed.
+- **Scope of test 2: fixed afterwards.** The scope line said "physical stores only (the tool's
+  default)" but not the years 2025 → 2029, because the tool used its default years and the scope
+  line was built only from the arguments passed. It now also reads the years from the tool's
+  result: "Scope: 2025 → 2029 (the tool's default: first and last years in the data); physical
+  stores only (the tool's default)". Three tests cover it; checked once on the hosted app.
 - **Repeated scope:** in test 5b/5c, the first finding repeats the scope ("The scope is Chicago…"),
   although the instructions say not to.
 - **Follow-up question the data cannot answer:** test 2's next step asks about "local factors"

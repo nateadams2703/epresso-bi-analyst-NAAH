@@ -426,3 +426,31 @@ def test_gemini_instructions_cover_the_defect_3_rules(ctx):
                  'Highest revenue, not profit:',
                  'only when you used\n  get_satisfaction_vs_revenue'):
         assert rule in system, rule
+
+
+
+# ---------------------------------------------------------------- default years in the scope
+def test_scope_shows_default_years_from_the_tool_result(ctx):
+    """Known issue 2 after Defect 3: "Which store declined most?" had no years in its scope."""
+    out = ask(ctx, 'Which store experienced the greatest percentage revenue decline?',
+              FakeClient([('get_store_trends', {})], 'done', answer('SH11 declined -66.81%.')))
+    assert out['scope'] == ("Scope: 2025 → 2029 (the tool's default: first and last years in "
+                            "the data); physical stores only (the tool's default).")
+
+
+def test_scope_shows_one_default_year_when_only_the_other_was_given(ctx):
+    out = ask(ctx, 'Which store declined most since 2026?',
+              FakeClient([('get_store_trends', {'start_year': 2026})], 'done',
+                         answer('SH11 declined since 2026.')))
+    assert out['scope'] == ("Scope: from 2026 (from your question); to 2029 (the tool's "
+                            "default: last year in the data); physical stores only (the tool's "
+                            "default).")
+
+
+def test_scope_has_no_default_years_when_both_were_given(ctx):
+    out = ask(ctx, 'Which store declined most from 2026 to 2028?',
+              FakeClient([('get_store_trends', {'start_year': 2026, 'end_year': 2028})], 'done',
+                         answer('SH11 declined from 2026 to 2028.')))
+    assert "default: first" not in out['scope'] and "default: last" not in out['scope']
+    assert out['scope'].startswith('Scope: from 2026 (from your question); to 2028 (from your '
+                                   'question)')

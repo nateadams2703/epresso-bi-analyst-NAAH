@@ -961,6 +961,20 @@ def _llm_scope(question: str, log: list, ctx: Context, sidebar: dict | None,
                 source = 'chosen by the model'
             prefix = {'start_year': 'from ', 'end_year': 'to '}.get(param, '')
             parts.append(f'{prefix}{_describe(param, values, labels)} ({source})')
+        # Years the tool chose itself (no start_year/end_year passed) are in its result's scope;
+        # without this, "Which store declined most?" showed no years at all.
+        result_scope = (entry['result'] or {}).get('scope') or {}
+        given = entry['arguments_used']
+        start, end = result_scope.get('start_year'), result_scope.get('end_year')
+        if start is not None and end is not None and 'start_year' not in given \
+                and 'end_year' not in given:
+            parts.insert(0, f"{start} → {end} (the tool's default: first and last years in "
+                            f"the data)")
+        else:
+            if start is not None and 'start_year' not in given:
+                parts.append(f"from {start} (the tool's default: first year in the data)")
+            if end is not None and 'end_year' not in given:
+                parts.append(f"to {end} (the tool's default: last year in the data)")
         if entry['tool'] == 'get_store_trends' and 'channel' not in entry['arguments_used']:
             parts.append('physical stores only (the tool\'s default)')
         pieces += [part for part in parts if part not in pieces]  # each filter once
