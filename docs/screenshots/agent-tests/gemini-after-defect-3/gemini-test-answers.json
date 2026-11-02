@@ -1,0 +1,108 @@
+{
+  "check": {
+    "mode_selector_present": true,
+    "gemini_selected_by_default": true,
+    "no_key_warning": false
+  },
+  "answers": [
+    {
+      "name": "gemini-test-1-website-revenue-2028",
+      "time": "2026-11-02 15:23:34",
+      "question": "How much revenue did the website generate in 2028?",
+      "sidebar_sales_line": "Sales: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_total_revenue · ok · 240 rows · 10.2 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls\n\nScope: 2028 (from your question); Website (from your question).\n\nFindings\n\nThe website channel generated $6,339,640 in revenue in 2028.\n\nInterpretation\n\nRevenue is not profit: costs are not in the data.\nThe data only shows the total sales volume for the website channel in 2028 without accounting for operational expenses.\n\nNext steps\n\nWould you like to compare the website channel's 2028 revenue with previous years or specific product categories?\nkeyboard_arrow_down\n\nTool-call log (1 call)\n\n1. get_total_revenue · ok · 240 rows · 10.2 ms\n\nArguments: {\"channel\": [\"Website\"], \"year\": [2028]} → used: {\"year\": [2028], \"channel\": [\"Website\"]}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}"
+    },
+    {
+      "name": "gemini-test-2-greatest-percentage-decline",
+      "time": "2026-11-02 15:24:14",
+      "question": "Which store experienced the greatest percentage revenue decline?",
+      "sidebar_sales_line": "Sales: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_store_trends · ok · 9,600 rows · 40.0 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls\n\nScope: physical stores only (the tool's default).\n\nFindings\n\nStore SH11 in Chicago, IL experienced a revenue change of -$360,610, representing a -66.81% decline between 2025 and 2029.\nSH11 belongs to the 4-Large Market tier and ranked 1 out of 3 stores in that tier for percentage decline.\nThe median change for the 4-Large tier was -47.27%, placing SH11 19.54 percentage points below the tier median.\nAcross all physical stores compared, 20 out of 20 stores declined between 2025 and 2029.\n\nInterpretation\n\nRevenue is not profit: costs are not in the data.\nThe comparison covers 2025 and 2029 only; the years in between are not used.\nA change in revenue does not explain why it changed; the reasons are not in the data.\nSH11 experienced the largest percentage decline among all stores, significantly underperforming the 4-Large tier median.\n\nNext steps\n\nWhat specific local factors contributed to the sharp revenue decline at store SH11 in Chicago?\nkeyboard_arrow_down\n\nTool-call log (1 call)\n\n1. get_store_trends · ok · 9,600 rows · 40.0 ms\n\nArguments: {} → used: {}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}"
+    },
+    {
+      "name": "gemini-test-3-most-profitable-store",
+      "time": "2026-11-02 15:24:53",
+      "question": "Which E-Presso store is the most profitable?",
+      "sidebar_sales_line": "Sales: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_data_coverage · ok · 25,200 rows · 12.2 ms",
+        "2. get_revenue_breakdown · ok · 24,000 rows · 24.5 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls\n\nScope: by store; Brick & Mortar (chosen by the model).\n\nFindings\n\nProfit cannot be calculated because the data contains no cost, expense, price, or profit columns.\nHighest revenue, not profit: SH09 - Phoenix, AZ (Market tier: 4-Large) generated $2,527,100 in revenue.\nHighest revenue, not profit: SH15 - Baltimore, MD (Market tier: 4-Large) generated $1,941,550 in revenue.\nHighest revenue, not profit: SH11 - Chicago, IL (Market tier: 4-Large) generated $1,751,090 in revenue.\nThe three stores with the highest revenue share the same Market tier (4-Large).\n\nInterpretation\n\nRevenue is not profit: costs are not in the data.\nThe ranking reflects size, as all top revenue stores share the same Market tier.\n\nNext steps\n\nNo recommendation is supported by this data.\nkeyboard_arrow_down\n\nTool-call log (2 calls)\n\n1. get_data_coverage · ok · 25,200 rows · 12.2 ms\n\nArguments: {} → used: {}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}\n\n2. get_revenue_breakdown · ok · 24,000 rows · 24.5 ms\n\nArguments: {\"by\": [\"store\"], \"channel\": [\"Brick & Mortar\"]} → used: {\"by\": [\"store\"], \"channel\": [\"Brick & Mortar\"]}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}"
+    },
+    {
+      "name": "gemini-test-4-satisfaction-causes-revenue",
+      "time": "2026-11-02 15:25:33",
+      "question": "Does higher customer satisfaction cause higher revenue?",
+      "sidebar_sales_line": "Sales: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_satisfaction_vs_revenue · ok · 25,200 rows · 22.5 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls\n\nScope: all loaded data.\n\nFindings\n\nThe overall correlation between satisfaction and revenue is weak at +0.235 across 100 store-years.\nWithin Market tier 1-Small, the correlation is near zero at -0.01 with 30 store-years, a mean satisfaction of 3.54, and a mean store-year revenue of $72,964.67.\nWithin Market tier 2-Minor, the correlation is near zero at -0.09 with 30 store-years, a mean satisfaction of 3.06, and a mean store-year revenue of $96,821.\nWithin Market tier 3-Medium, the correlation is near zero at -0.01 with 25 store-years, a mean satisfaction of 3.12, and a mean store-year revenue of $145,690.\nWithin Market tier 4-Large, the correlation is weak at +0.18 with 15 store-years, a mean satisfaction of 4.28, and a mean store-year revenue of $414,649.33.\nFive website store-years were excluded because they lack in-store survey scores.\n\nInterpretation\n\nAssociation is not causation: a correlation cannot show that satisfaction causes revenue.\nMarket tier confounds the comparison because larger stores earn more regardless of their satisfaction score.\nThe survey reflects active customers only and excludes people who stopped shopping at a store.\nRevenue is not profit because costs are not in the data.\n\nNext steps\n\nNo recommendation is supported by this data.\nkeyboard_arrow_down\n\nTool-call log (1 call)\n\n1. get_satisfaction_vs_revenue · ok · 25,200 rows · 22.5 ms\n\nArguments: {} → used: {}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}"
+    },
+    {
+      "name": "gemini-test-5a-chicago-2028-before-upload",
+      "time": "2026-11-02 15:26:14",
+      "question": "What was Chicago's revenue in 2028?",
+      "sidebar_sales_line": "Sales: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_total_revenue · ok · 240 rows · 25.8 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls\n\nScope: 2028 (from your question); SH11 – Chicago, IL (from your question).\n\nFindings\n\nThe total revenue for store SH11 (Chicago) in 2028 was $269,100.\nThe data includes sales rows across all categories and channels for the year 2028.\n\nInterpretation\n\nRevenue is not profit: costs are not in the data.\nThis figure reflects the total gross sales generated by the Chicago store in 2028 without accounting for operating expenses.\n\nNext steps\n\nHow does Chicago's 2028 revenue compare to its performance in previous years?\nkeyboard_arrow_down\n\nTool-call log (1 call)\n\n1. get_total_revenue · ok · 240 rows · 25.8 ms\n\nArguments: {\"store\": [\"Chicago\"], \"year\": [2028]} → used: {\"year\": [2028], \"store\": [\"SH11\"]}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}"
+    },
+    {
+      "name": "gemini-test-5b-chicago-2028-after-upload",
+      "time": "2026-11-02 15:26:55",
+      "question": "What was Chicago's revenue in 2028?",
+      "sidebar_sales_line": "Sales: Sales.csv (uploaded) · 25,200 rows · revenue sum $42,175,440.00",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_total_revenue · ok · 240 rows · 23.6 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls\n\nScope: 2028 (from your question); SH11 – Chicago, IL (from your question).\n\nFindings\n\nThe scope is Chicago (store SH11) for the year 2028 across all categories and channels.\nThe total revenue for Chicago in 2028 was $270,100.\n\nInterpretation\n\nChicago generated $270,100 in top-line sales during 2028.\nRevenue is not profit: costs are not in the data.\n\nNext steps\n\nHow does Chicago's 2028 revenue compare to its performance in previous years?\nkeyboard_arrow_down\n\nTool-call log (1 call)\n\n1. get_total_revenue · ok · 240 rows · 23.6 ms\n\nArguments: {\"year\": [2028], \"store\": [\"Chicago\"]} → used: {\"year\": [2028], \"store\": [\"SH11\"]}\n\nData: Sales.csv (uploaded) · 25,200 rows · revenue sum $42,175,440.00\n\n{...}"
+    },
+    {
+      "name": "gemini-test-5c-chicago-2028-after-restore",
+      "time": "2026-11-02 15:27:36",
+      "question": "What was Chicago's revenue in 2028?",
+      "sidebar_sales_line": "Sales: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_total_revenue · ok · 240 rows · 23.1 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 3 model calls\n\nScope: 2028 (from your question); SH11 – Chicago, IL (from your question).\n\nFindings\n\nThe scope is Chicago (store ID SH11) for the year 2028, across all categories and channels.\nThe total revenue for Chicago in 2028 was $269,100.\n\nInterpretation\n\nRevenue is not profit: costs are not in the data.\nThis figure represents total sales revenue without accounting for operating costs or expenses.\n\nNext steps\n\nWhat was Chicago's revenue broken down by product category in 2028?\nkeyboard_arrow_down\n\nTool-call log (1 call)\n\n1. get_total_revenue · ok · 240 rows · 23.1 ms\n\nArguments: {\"year\": [2028], \"store\": [\"Chicago\"]} → used: {\"year\": [2028], \"store\": [\"SH11\"]}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}"
+    },
+    {
+      "name": "gemini-extra-how-did-we-do-in-2028",
+      "time": "2026-11-02 15:28:16",
+      "question": "How did we do in 2028?",
+      "sidebar_sales_line": "Sales: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00",
+      "answered_by": "Answered by: Gemini (gemini-3.5-flash-lite), function calling · 4 model calls",
+      "fallback_notice": "",
+      "tool_calls": [
+        "1. get_total_revenue · ok · 5,040 rows · 5.3 ms",
+        "2. get_revenue_breakdown · ok · 5,040 rows · 9.5 ms",
+        "3. get_revenue_breakdown · ok · 5,040 rows · 6.8 ms"
+      ],
+      "answer_text": "smart_toy\n\nAnswered by: Gemini (gemini-3.5-flash-lite), function calling · 4 model calls\n\nScope: 2028 (from your question); by channel; by category.\n\nFindings\n\nTotal revenue for the year 2028 was 8969470 across all channels, stores, and categories.\nWebsite channel revenue was 6339640 with a share percentage of 70.6802.\nBrick & Mortar channel revenue was 2629830 with a share percentage of 29.3198.\nEspresso Machines category revenue was 5822640 with a share percentage of 64.9162.\nBeans category revenue was 1191300 with a share percentage of 13.2817.\nFrothers category revenue was 884880 with a share percentage of 9.8655.\nSyrups category revenue was 564410 with a share percentage of 6.2926.\nAccessories category revenue was 506240 with a share percentage of 5.644.\n\nInterpretation\n\nRevenue is not profit: costs are not in the data.\nThe website channel generates the vast majority of total sales compared to physical stores.\nEspresso Machines are the dominant product category by revenue.\n\nNext steps\n\nHow did individual stores perform within the Brick & Mortar channel during 2028?\nkeyboard_arrow_down\n\nTool-call log (3 calls)\n\n1. get_total_revenue · ok · 5,040 rows · 5.3 ms\n\nArguments: {\"year\": [2028]} → used: {\"year\": [2028]}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}\n\n2. get_revenue_breakdown · ok · 5,040 rows · 9.5 ms\n\nArguments: {\"by\": [\"channel\"], \"year\": [2028]} → used: {\"by\": [\"channel\"], \"year\": [2028]}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}\n\n3. get_revenue_breakdown · ok · 5,040 rows · 6.8 ms\n\nArguments: {\"by\": [\"category\"], \"year\": [2028]} → used: {\"by\": [\"category\"], \"year\": [2028]}\n\nData: Sales.csv (original (data/)) · 25,200 rows · revenue sum $42,174,440.00\n\n{...}"
+    }
+  ]
+}

@@ -6,7 +6,9 @@ questions to fixed tools with keyword rules and does not use a language model.
 **Status (Nov 2, 2026):** all five tests were run and **passed** in rules-based mode (Option B,
 first table). They were then rerun in **Gemini mode (Option A)**, in the section "Gemini mode
 (Option A) tests" below: Gemini answered every question itself, with 0 fallbacks; tests 1, 4, and
-5 passed, and tests 2 and 3 were **partial**. Defect 1
+5 passed, and tests 2 and 3 were **partial**. After the Defect 3 fix, a rerun in Gemini mode passed
+**all five tests and the extra question** (8 of 8 answered by Gemini, 0 fallbacks); see "Gemini
+mode rerun after Defect 3". Defect 1
 was found, fixed, and retested (the "Extra" row). Defect 2 was found in the first live Gemini
 call, fixed, and retested on the hosted app (Gemini answered).
 
@@ -42,7 +44,7 @@ script was changed to find the button by that name, and all five tests were reru
 | 5. Updated data | What was Chicago's revenue in 2028? (asked before and after uploading `data/modified/Sales.csv`, then restored) | `get_total_revenue(year=2028, store=SH11)` | The answer after the upload is exactly $1,000 higher; the tool-call log's data line changes from "(original (data/))" to "(uploaded)". This is also the assistant step of the $1,000 test (`docs/1000-test.md`). | **Before the upload: $269,100.00**, log data line "Sales.csv (original (data/)) · … revenue sum $42,174,440.00". After uploading `data/modified/Sales.csv` (sidebar: "(uploaded) · … $42,175,440.00"): **$270,100.00**, exactly **+$1,000.00**, log data line "Sales.csv (uploaded) · … $42,175,440.00". After removing the upload: back to **$269,100.00**, data line "(original (data/))". Same tool and arguments each time (`store: Chicago → SH11`, `year: 2028`); no code change, no restart. Screenshots: `test-5a-…before-upload.png`, `test-5b-…after-upload.png`, `test-5c-…after-restore.png`. | **Pass** | None needed. This also completes the $1,000 test's "ask the assistant before and after" step (`docs/1000-test.md`). |
 | Extra: fix and retest | How did Orlando do in 2028? | Before the fix: none. After: `get_total_revenue(year=2028, store=Orlando)` | Recognised as a store revenue question; the dispatcher then reports that "Orlando" matches two stores (SH01 – Orlando, FL and SH08 – Orlando, FL) and asks which one. | Before the fix: the unsupported reply ("I can't answer that…"); no tool was run. After the fix (retest, Nov 2): the SH01/SH08 ambiguous-store answer, with one logged `get_total_revenue` call (status error). | **Fail** before the fix → **Pass** after | Router rule for casual store questions, plus logging of failed store lookups in trend questions. See "Defect 1" below. |
 
-## Gemini mode (Option A) tests, Nov 2, 2026
+## Gemini mode (Option A) tests, Nov 2, 2026 (before Defect 3)
 
 **How they were run:** automated on the hosted app, 15:10:13–15:15:01, by Claude's Playwright
 session, after the defect 2 retest passed. Before asking, the script checked that Gemini was the
@@ -79,6 +81,49 @@ the Option B results and the independent pandas check.
   questions (exclude the website unless asked, rank by revenue, show the top stores labelled
   "highest revenue, not profit", and note the tiers). Then rerun tests 2 and 3 as a fix and
   retest.
+
+## Gemini mode rerun after Defect 3, Nov 2, 2026 (final evidence)
+
+**How it was run:** the same 8 steps as the run above, automated on the hosted app, 15:23:34–
+15:28:16, after the Defect 3 fix was pushed (`a108fa0`) and Nate rebooted the app. Claude's
+Playwright session asked about 30 seconds apart, after checking that Gemini was the default mode.
+Screenshots (tool-call log open) and every answer's text:
+`docs/screenshots/agent-tests/gemini-after-defect-3/`.
+
+**How often Gemini answered: 8 of 8, 0 fallbacks**, 3–4 model calls each. All numbers match
+the earlier results and the independent pandas check.
+
+| Test | Gemini's answer after the fix (key points) | Before → after |
+|---|---|---|
+| 1. Numerical calculation | "The website channel generated $6,339,640 in revenue in 2028." Next step: compare with previous years or categories. | Pass → **Pass**. No more "across all stores"; a follow-up question instead of "No recommendation". |
+| 2. Numerical comparison | SH11 Chicago, −66.81% (−$360,610); 4-Large; "ranked 1 out of 3 stores in that tier"; tier median −47.27%, "19.54 percentage points below the tier median"; "20 out of 20 stores declined" | Partial → **Pass**: rank within tier, tier median and distance, and the number of stores that declined are now all given. |
+| 3. Missing information | "Profit cannot be calculated…"; "Highest revenue, not profit:" SH09 Phoenix $2,527,100, SH15 Baltimore $1,941,550, SH11 Chicago $1,751,090, all 4-Large; "The ranking reflects size"; "No recommendation…". The breakdown was called with `channel: ["Brick & Mortar"]`. | Partial → **Pass**: website excluded, top three only, labelled, tier note. |
+| 4. Analytical judgment | +0.235 (weak, 100 store-years); each tier near zero except 4-Large weak (+0.18, n = 15); association not causation; tier confounding; active customers only; 5 Website store-years excluded; "No recommendation…" | Pass → **Pass** |
+| 5. Updated data | **$269,100 → $270,100 → $269,100**; data line "(original (data/))" → **"(uploaded)"** → "(original (data/))" | Pass → **Pass**. No more "association is not causation" line. |
+| Extra: How did we do in 2028? | Total 8969470; Website 6339640 (70.6802%); Brick & Mortar 2629830 (29.3198%); each category's revenue and share | Pass → **Pass**, with a formatting regression (see below) |
+
+**Defect 3, point by point (before → after):**
+
+| Point | Before | After |
+|---|---|---|
+| (1) Tier context in store comparisons | Missing | **Fixed:** rank 1 of 3 in 4-Large, tier median −47.27%, 19.54 points below, 20 of 20 declined |
+| (2) Profit answer | All 21 stores in ID order, website included | **Fixed:** top three, "Highest revenue, not profit", 4-Large note, website excluded |
+| (3) Scope line | "Scope: get_total_revenue: …" | **Fixed:** e.g. "Scope: 2028 (from your question); Website (from your question)." |
+| (4) "website channel across all stores" | Present | **Fixed:** "The website channel generated $6,339,640…" |
+| (5) "No recommendation" on descriptive questions | Tests 2, extra, retest | **Fixed:** only tests 3 and 4; the others end with a follow-up question |
+| (6) Unrelated "association is not causation" | Test 5b | **Fixed:** appears only in test 4 |
+
+**Remaining minor issues (not fixed; noted for honesty):**
+- **Number formatting:** in the extra question, Gemini wrote raw numbers ("8969470", "share
+  percentage of 70.6802") where the earlier run wrote "$8,969,470" and "70.68%". The values are
+  correct and pass the number check; only readability got worse.
+- **Scope of test 2:** the scope line says "physical stores only (the tool's default)" but not
+  the years 2025 → 2029. The tool used its default years, and the scope line is built only from
+  the arguments that were passed.
+- **Repeated scope:** in test 5b/5c, the first finding repeats the scope ("The scope is Chicago…"),
+  although the instructions say not to.
+- **Follow-up question the data cannot answer:** test 2's next step asks about "local factors"
+  at SH11, which the data does not contain.
 
 ## Defect 1: casual store questions get the unsupported reply
 
@@ -142,4 +187,4 @@ table above.
 | Cause | (1, 2, 4) Gemini's instructions did not say what a store comparison or a profit answer must contain, or that the website is not a group of stores. (3) `_llm_scope()` prefixed every part with the tool's name. (5) A logic error in `llm_answer()`: "No recommendation" was kept whenever Gemini included it, even for a descriptive question, and the instructions invited it for "a cause". (6) The final instruction listed "association is not causation" as a general caveat, and nothing filtered it out. |
 | Fix (Nov 2) | **Enforced in code:** (3) the scope line has no tool names and lists each filter once ("all loaded data" when no filter was used). (5) "No recommendation…" is placed first only for decision, profit, and judgment (satisfaction) questions. For every other question it is removed, and if no next step is left, a follow-up question is offered. (6) Correlation and causation remarks are removed, clause by clause, unless the correlation tool ran. **In Gemini's instructions:** (1) store comparisons must give the rank within the tier, the tier median and the distance from it, and how many stores declined. (2) Profit questions must use the physical channel(s) unless the website is asked about, and report only the top three stores, introduced as "Highest revenue, not profit:", with their tiers and whether they share one. (4) The website is a separate sales channel, not a group of stores. Points 1, 2, and 4 are about wording and content, so the rerun below is their test. |
 | Tests | 11 new tests in `tests/test_llm.py`: the scope has no tool names and no repeated filters; descriptive answers get a follow-up instead of "No recommendation" (also when Gemini writes it); judgment answers start with it; causation remarks are removed without the correlation tool and kept with it; the instructions contain each new rule. All 305 tests pass. |
-| After (rerun in Gemini mode on the hosted app) | **Pending:** after the fix is pushed and the app rebooted, rerun the five agent tests and "How did we do in 2028?". Record the before/after for each point above. |
+| After (rerun in Gemini mode on the hosted app) | **All six points fixed** (Nov 2, 15:23–15:28; Gemini answered 8 of 8, 0 fallbacks). Tests 2 and 3 went from partial to pass. Point-by-point before/after: "Gemini mode rerun after Defect 3" above. Remaining minor issues (raw number formatting in one answer, years missing from one scope line, a repeated scope in two findings, one follow-up question the data cannot answer) are listed there. |
