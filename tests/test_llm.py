@@ -47,8 +47,7 @@ def test_gemini_answer_runs_tools_through_the_dispatcher(ctx):
     assert entry['status'] == 'ok' and entry['arguments_used'] == {'year': [2028],
                                                                     'channel': ['Website']}
     assert client.seen['results'][0][0][1]['value'] == 6339640.0  # the result Gemini saw
-    assert out['scope'] == ('Scope: get_total_revenue: 2028 (from your question); '
-                            'Website (from your question).')
+    assert out['scope'] == 'Scope: 2028 (from your question); Website (from your question).'
     assert out['model_calls'] == 3
 
 
@@ -350,3 +349,80 @@ def test_bad_request_fallback_names_the_cause(ctx):
     assert out['fallback']['kind'] == 'bad_request'
     assert out['fallback']['reason'] == 'Gemini rejected the request as invalid (400)'
     assert "Role 'tool' is not supported" in out['fallback']['detail']
+
+
+
+# ---------------------------------------------------------------- defect 3: answer quality
+def test_scope_has_no_tool_names_and_lists_each_filter_once(ctx):
+    client = FakeClient([('get_total_revenue', {'year': [2028]}),
+                         ('get_revenue_breakdown', {'by': ['channel'], 'year': [2028]})],
+                        'done', answer('Total revenue was $8,969,470.'))
+    out = ask(ctx, 'How did we do in 2028?', client)
+    assert out['scope'] == 'Scope: 2028 (from your question); by channel.'
+    assert 'get_' not in out['scope']
+
+
+def test_scope_with_no_filters_says_all_loaded_data(ctx):
+    out = ask(ctx, 'What data do you have?',
+              FakeClient([('get_data_coverage', {})], 'done', answer('Measures: Revenue.')))
+    assert out['scope'] == 'Scope: all loaded data.'
+
+
+@pytest.mark.parametrize('model_steps', [['No recommendation is supported by this data.'],
+                                         ['No recommendation is supported.'], []])
+def test_descriptive_answer_gets_a_follow_up_not_no_recommendation(ctx, model_steps):
+    out = ask(ctx, 'How much revenue did the website generate in 2028?',
+              FakeClient([('get_total_revenue', {'year': [2028], 'channel': ['Website']})],
+                         'done', answer('Total: $6,339,640.', next_steps=model_steps)))
+    assert out['next_steps'] == [agent.FOLLOW_UP]
+
+
+def test_descriptive_answer_keeps_its_own_follow_up_question(ctx):
+    steps = ['What was website revenue by category in 2028?',
+             'No recommendation is supported by this data.']
+    out = ask(ctx, 'How much revenue did the website generate in 2028?',
+              FakeClient([('get_total_revenue', {'year': [2028], 'channel': ['Website']})],
+                         'done', answer('Total: $6,339,640.', next_steps=steps)))
+    assert out['next_steps'] == ['What was website revenue by category in 2028?']
+
+
+@pytest.mark.parametrize('question, calls', [
+    ('Which E-Presso store is the most profitable?', [('get_data_coverage', {})]),
+    ('Does higher customer satisfaction cause higher revenue?',
+     [('get_satisfaction_vs_revenue', {})])])
+def test_judgment_answers_start_with_no_recommendation(ctx, question, calls):
+    out = ask(ctx, question, FakeClient(calls, 'done', answer(
+        'The data cannot settle this question on its own.', next_steps=['Collect cost data.'])))
+    assert out['mode'] == 'llm'
+    assert out['next_steps'] == [agent.NO_RECOMMENDATION, 'Collect cost data.']
+
+
+def test_causation_remarks_removed_when_no_correlation_tool_was_used(ctx):
+    out = ask(ctx, "What was Chicago's revenue in 2028?", FakeClient(
+        [('get_total_revenue', {'store': ['Chicago'], 'year': [2028]})], 'done', answer(
+            'Chicago: $269,100.',
+            interpretation=['Revenue is not profit: costs are not in the data.',
+                            'Association is not causation.',
+                            'A change in revenue does not explain why it changed; association '
+                            'is not causation and reasons are not in the data.'])))
+    assert out['interpretation'] == ['Revenue is not profit: costs are not in the data.',
+                                     'A change in revenue does not explain why it changed.']
+
+
+def test_causation_remarks_kept_for_the_correlation_tool(ctx):
+    caveat = 'This is an association, not causation.'
+    out = ask(ctx, 'Does higher customer satisfaction cause higher revenue?', FakeClient(
+        [('get_satisfaction_vs_revenue', {})], 'done',
+        answer('100 store-years.', interpretation=[caveat])))
+    assert out['interpretation'] == [caveat]
+
+
+def test_gemini_instructions_cover_the_defect_3_rules(ctx):
+    client = FakeClient([('get_data_coverage', {})], 'done', answer('Measures: Revenue.'))
+    ask(ctx, 'What data do you have?', client)
+    system = client.seen['system']
+    for rule in ('separate sales channel, not a group of stores', 'rank within that tier',
+                 'stores_declined of stores_compared', 'every channel except Website',
+                 'Highest revenue, not profit:',
+                 'only when you used\n  get_satisfaction_vs_revenue'):
+        assert rule in system, rule

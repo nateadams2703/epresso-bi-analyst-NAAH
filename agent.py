@@ -857,16 +857,30 @@ How to work:
   own). Restate numbers from tool results; rounding them (for example $6.34M) is fine.
 - Store arguments accept a store ID (SH11) or a city that has one store (Chicago). If a tool
   returns an error, read it; for a city with several stores, ask the user which store.
-- Stores differ in size (Market tier): when comparing stores, mention their tiers."""
+- Stores differ in size (Market tier): when comparing stores, mention their tiers.
+- The website (store SH00) is a separate sales channel, not a group of stores. Never describe
+  website revenue as being "across stores"; call it the website channel.
+- Store comparisons (get_store_trends): for each store you report, give its change, its Market
+  tier, its rank within that tier (rank_in_tier, out of the tier's stores), the tier's median
+  change and how far the store is from it (vs_tier_median_pts), and how many of the stores
+  compared declined (stores_declined of stores_compared).
+- Profit or "most profitable" questions: call get_data_coverage, then get_revenue_breakdown
+  with by=["store"] and channel set to every channel except Website, unless the question asks
+  about the website. Say that profit cannot be calculated, then report only the three stores
+  with the highest revenue, introduced as "Highest revenue, not profit:", each with its Market
+  tier, and say whether those stores share a tier (that is, whether the ranking reflects size).
+- Mention correlation, association, or causation only when you used
+  get_satisfaction_vs_revenue."""
 
 FINAL_INSTRUCTION = """Now write the answer for an E-Presso manager as JSON with three lists of
 short sentences:
 - findings: facts from the tool results, with their numbers. No number that is not in a tool
   result, the tool arguments, or the question.
 - interpretation: what the findings mean and their limitations (use the tools' caveats;
-  revenue is not profit; association is not causation).
-- next_steps: a useful follow-up question or action, or exactly "No recommendation is supported
-  by this data." when the question asks for a decision, a cause, or profit.
+  revenue is not profit). Do not add caveats that are unrelated to the tools you used.
+- next_steps: for a decision, profit, or cause question, start with exactly "No recommendation
+  is supported by this data." For any other question, give a useful follow-up question
+  instead (never "No recommendation ...").
 Do not include the scope; it is added separately."""
 
 ANSWER_SCHEMA = {'type': 'object',
@@ -918,8 +932,9 @@ def _llm_system(sidebar: dict | None, use_sidebar: bool) -> str:
 
 def _llm_scope(question: str, log: list, ctx: Context, sidebar: dict | None,
                use_sidebar: bool, labels: dict) -> str:
-    """The scope line, built by our code from the arguments each tool actually used. Each
-    filter says where it came from: the question, the sidebar, or the model's own choice."""
+    """The scope line, built by our code from the arguments the tools actually used (no tool
+    names; each filter once). Each filter says where it came from: the question, the sidebar,
+    or the model's own choice."""
     asked = {}
     for param, raw in extract_filters(question, ctx).items():
         value, err = normalize(param, raw, ctx)
@@ -948,12 +963,33 @@ def _llm_scope(question: str, log: list, ctx: Context, sidebar: dict | None,
             parts.append(f'{prefix}{_describe(param, values, labels)} ({source})')
         if entry['tool'] == 'get_store_trends' and 'channel' not in entry['arguments_used']:
             parts.append('physical stores only (the tool\'s default)')
-        pieces.append(f"{entry['tool']}: " + ('; '.join(parts) if parts else 'all loaded data'))
-    scope = 'Scope: ' + ' | '.join(pieces) + '.'
+        pieces += [part for part in parts if part not in pieces]  # each filter once
+    scope = 'Scope: ' + ('; '.join(pieces) if pieces else 'all loaded data') + '.'
     unused = sorted(set(side) - used_params - set(asked))
     if unused:
         scope += f' Sidebar filter(s) not used by the model: {", ".join(unused)}.'
     return scope
+
+
+JUDGMENT_INTENTS = ('decision', 'profit', 'satisfaction')  # the only ones with "No recommendation"
+FOLLOW_UP = ('Ask a follow-up question, for example a breakdown by year, channel, store, or '
+             'category.')
+CAUSATION_WORDS = re.compile(r'\b(causation|causal\w*|correlat\w*)\b', re.IGNORECASE)
+
+
+def _drop_unrelated_causation(items: list, log: list) -> list:
+    """Remove correlation/causation remarks unless a correlation tool was used (defect 3:
+    "association is not causation" was added to a plain revenue answer). Works clause by
+    clause, so "X; association is not causation" keeps X."""
+    if any(e['tool'] == 'get_satisfaction_vs_revenue' and e['status'] == 'ok' for e in log):
+        return items
+    kept_items = []
+    for item in items:
+        kept = [part.strip() for part in re.split(r';\s*', item) if not CAUSATION_WORDS.search(part)]
+        if kept:
+            text = '; '.join(kept)
+            kept_items.append(text if text.endswith(('.', '!', '?')) else text + '.')
+    return kept_items
 
 
 def _sections(written) -> dict | None:
@@ -1024,16 +1060,20 @@ def llm_answer(question: str, ctx: Context, sidebar: dict | None = None,
     if bad:
         return fallback('unsupported_number', ', '.join(bad))
     intent, _ = route(question, ctx)
-    next_steps = [s for s in sections['next_steps'] if s != NO_RECOMMENDATION]
-    if intent in ('decision', 'profit', 'satisfaction') or len(next_steps) < len(
-            sections['next_steps']):
+    # "No recommendation" belongs only to decision, profit, and judgment questions (defect 3);
+    # a descriptive question gets a follow-up question instead.
+    next_steps = [s for s in sections['next_steps'] if not s.startswith('No recommendation')]
+    if intent in JUDGMENT_INTENTS:
         next_steps.insert(0, NO_RECOMMENDATION)
+    elif not next_steps:
+        next_steps = [FOLLOW_UP]
+    interpretation = _drop_unrelated_causation(sections['interpretation'], log)
     labels = analytics.store_labels(ctx.model) if ctx.model is not None else {}
     logger.info('Assistant answered with Gemini (%s): %d model calls, %d tool calls',
                 client.model, model_calls, tool_calls)
     return {'intent': intent, 'scope': _llm_scope(question, log, ctx, sidebar, use_sidebar, labels),
-            'findings': sections['findings'], 'interpretation': sections['interpretation'],
-            'next_steps': next_steps or ['Ask a follow-up question to see more detail.'],
+            'findings': sections['findings'], 'interpretation': interpretation,
+            'next_steps': next_steps,
             'tool_log': log, 'mode': 'llm',
             'answered_by': f'Gemini ({client.model}), function calling', 'fallback': None,
             'model_calls': model_calls}

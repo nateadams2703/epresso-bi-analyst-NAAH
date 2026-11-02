@@ -20,8 +20,12 @@ live check with the real key is still to do; it will be recorded here.
      formatted versions are allowed: $6.34M for 6,339,640; 0.24 for 0.235; −66.8% for −66.81.
    - "No recommendation is supported by this data." is placed first in Next steps for decision,
      profit, and satisfaction questions.
-   - The **scope line is written by our code**, from the arguments each tool actually used. Each
-     filter is labelled "from your question", "from the sidebar filter", or "chosen by the model".
+   - The **scope line is written by our code**, from the arguments the tools actually used (no
+     tool names; each filter once). Each filter is labelled "from your question", "from the
+     sidebar filter", or "chosen by the model".
+   - "No recommendation is supported by this data." appears only for decision, profit, and
+     judgment questions; other questions get a follow-up question (Defect 3).
+   - Correlation and causation remarks are removed unless the correlation tool was used (Defect 3).
 
 Nothing in the app runs code written by the model: there is no code-execution tool, and no
 `eval`, `exec`, or `compile` (checked by a test). No tool changes the data.
