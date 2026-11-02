@@ -319,12 +319,13 @@ def _scope_text(values: list, default: str):
 
 
 def get_store_trends(model: pd.DataFrame | None, start_year=None, end_year=None, channel=None,
-                     category=None, market=None) -> ToolResult:
+                     category=None, market=None, store=None) -> ToolResult:
     """Each store's revenue in a start and an end year, the change in dollars and percent,
     and its Market tier, ranked from the largest decline to the largest growth.
     Physical stores only by default; pass `channel` to include the website.
     Stores differ in size, so each store is also ranked within its Market tier, and each
-    tier's median change is given."""
+    tier's median change is given. `store` names store(s) to focus on: they are still ranked
+    among all stores, and their rows are repeated in value['focus']."""
     name = 'get_store_trends'
     if model is None:
         return _error(name, 'Revenue cannot be calculated: the sales data did not load or '
@@ -333,6 +334,7 @@ def get_store_trends(model: pd.DataFrame | None, start_year=None, end_year=None,
     start = int(start_year) if str(start_year).isdigit() else (years[0] if years else None)
     end = int(end_year) if str(end_year).isdigit() else (years[-1] if years else None)
     markets = _as_list(market)
+    focus_ids = _as_list(store)
     base, market_err = _apply_filters(model, {'Market': markets} if markets else None)
     channels = _as_list(channel)
     default_channels = not channels
@@ -343,6 +345,12 @@ def get_store_trends(model: pd.DataFrame | None, start_year=None, end_year=None,
              else _scope_text(channels, 'All'),
              'category': _scope_text(_as_list(category), 'All'),
              'market': _scope_text(markets, 'All')}
+    if focus_ids:
+        scope['focus'] = _scope_text(focus_ids, 'none')
+    unknown = [s for s in focus_ids if s not in set(model['Store ID'])]
+    if unknown:
+        return _error(name, f'{unknown} not found in column Store ID. Valid values include: '
+                            f'{sorted(model["Store ID"].dropna().unique())[:25]}', scope)
     if start is None or end is None or start >= end:
         return _error(name, f'start_year must be earlier than end_year (got {start_year}, '
                             f'{end_year}). Years in the data: {years}', scope)
@@ -393,7 +401,13 @@ def get_store_trends(model: pd.DataFrame | None, start_year=None, end_year=None,
     value = {'start_year': start, 'end_year': end, 'stores': stores, 'tiers': tier_summary,
              'stores_compared': len(stores), 'stores_declined': len(declined),
              'declined': declined,
-             'largest_decline': stores[0] if declined else None}
+             'largest_decline': stores[0] if declined else None,
+             'focus': [r for r in stores if r['store'] in focus_ids]}
+    missing_focus = [s for s in focus_ids if s not in {r['store'] for r in stores}]
+    if missing_focus:
+        caveats.append(f'{", ".join(missing_focus)} is not among the stores compared (for '
+                       f'example the website, unless its channel is chosen, or a store with no '
+                       f'sales in these years).')
     caveats.append(f'Compares {start} with {end} only; the years in between are not used.')
     caveats.append('Stores differ in size (Market tier), so compare percentage change, and '
                    'compare a store with others in the same tier (its rank within the tier and '

@@ -96,10 +96,11 @@ TOOLS = {
         'description': 'Each month\'s share of revenue for the selected period (seasonality).'},
     'get_store_trends': {
         'fn': analytics.get_store_trends, 'inputs': ('model',),
-        'params': ('start_year', 'end_year', 'channel', 'category', 'market'), 'required': (),
+        'params': ('start_year', 'end_year', 'channel', 'category', 'market', 'store'),
+        'required': (),
         'description': 'Revenue change per store between two years, ranked from the largest '
                        'decline, with Market tier and within-tier rank. Physical stores only '
-                       'unless channel is given.'},
+                       'unless channel is given; store picks store(s) to focus on.'},
     'get_satisfaction_vs_revenue': {
         'fn': analytics.get_satisfaction_vs_revenue, 'inputs': ('model', 'survey'),
         'params': ('year', 'market'), 'required': (),
@@ -277,6 +278,10 @@ INTENT_RULES = [
     ('breakdown', r'\b(by|per|each|which|compare\w*|comparison|breakdown|split|top|highest|'
                   r'lowest|best|worst|biggest|smallest|rank\w*)\b'),
     ('total', r'\b(revenue|sales|sold|sell|earn\w*|made|generat\w*|how much|total|income)\b'),
+    # Casual store questions with no money word ("How did Orlando do in 2028?", "How is
+    # Chicago doing?"). Checked last, so it only catches questions no other rule matched.
+    ('performance', r"\bhow(?:'s|\s+(?:did|does|do|is|was|has|have|are|were))\b.*"
+                    r"\b(do|doing|did|done|perform\w*|fare|fared|faring|go|going|went)\b"),
 ]
 DIMENSION_WORDS = {'year': r'\b(years?|yearly|annual\w*)\b', 'month': r'\b(months?|monthly)\b',
                    'channel': r'\bchannels?\b', 'store': STORE_WORDS,
@@ -354,6 +359,8 @@ def route(question: str, ctx: Context):
             continue
         if intent == 'breakdown' and not _dimensions(q, filters):
             continue
+        if intent == 'performance' and not filters.get('store'):
+            continue  # "How did we do?" names no store
         return intent, filters
     return None, filters
 
@@ -540,7 +547,10 @@ def _seasonality(filters, sidebar, use_sidebar, ctx, log, labels):
 
 def _store_trends(filters, sidebar, use_sidebar, ctx, log, labels):
     reasons = {'store': 'this question compares stores'}
-    args, sources, notes = build_args(filters, sidebar, use_sidebar,
+    # Stores named in the question are the focus of the answer, not a filter. They go to the
+    # tool as `store`, so the dispatcher checks them (and logs a failed lookup, e.g. Orlando).
+    other = {k: v for k, v in filters.items() if k != 'store'}
+    args, sources, notes = build_args(other, sidebar, use_sidebar,
                                       ('year', 'channel', 'category', 'market'), reasons)
     years = args.pop('year', [])
     year_source = sources.pop('year', None)
@@ -549,27 +559,28 @@ def _store_trends(filters, sidebar, use_sidebar, ctx, log, labels):
     elif years:
         notes.append(f'A trend needs two years, so the first and last years in the data are '
                      f'used ({year_source.replace("from ", "")} gave one).')
+    if filters.get('store'):
+        args['store'] = filters['store']
     r = run_tool('get_store_trends', args, ctx, log)
     if r.error:
         return _error_answer('store_trends', r, log)
     v = r.value
     start, end = v['start_year'], v['end_year']
     used = log[-1]['arguments_used']
+    named = used.get('store', [])
     year_text = (f'{start} → {end} ({year_source})' if 'start_year' in used
                  else f'{start} → {end} (first and last years in the data)')
     channel_text = (f"{_describe('channel', used['channel'], labels)} ({sources['channel']})"
                     if 'channel' in used else
                     'physical stores only (the website is a separate channel; excluded unless asked)')
     parts = [year_text, channel_text] + _filter_parts(used, sources, labels, ('category', 'market'))
+    if named:
+        parts.insert(0, f"focus: {_describe('store', named, labels)} ({FROM_QUESTION})")
     scope = _scope(parts, notes)
     tiers = {t['market']: t for t in v['tiers']}
     findings = [f"{v['stores_declined']} of {v['stores_compared']} stores compared declined "
                 f'between {start} and {end}.']
-    named = []
-    for s in filters.get('store', []):
-        store_id, _ = normalize('store', s, ctx)
-        named += store_id or []
-    focus = [row for row in v['stores'] if row['store'] in named]
+    focus = v['focus']
     if focus:
         findings += [_trend_sentence(row, tiers, start, end) for row in focus]
     elif v['largest_decline']:
@@ -756,7 +767,18 @@ def _coverage(filters, sidebar, use_sidebar, ctx, log, labels):
                    [f'{what}: e.g. "{example}"' for what, example in CAPABILITIES], log)
 
 
-COMPOSERS = {'total': _total, 'seasonality': _seasonality, 'store_trends': _store_trends,
+def _performance(filters, sidebar, use_sidebar, ctx, log, labels):
+    """A store question with no money word. With one year ("How did Orlando do in 2028?"):
+    that store's total revenue for the year. Otherwise ("How is Chicago doing?"): its revenue
+    change between two years, with its Market-tier context."""
+    if len(filters.get('year', [])) == 1:
+        answer = _total(filters, sidebar, use_sidebar, ctx, log, labels)
+    else:
+        answer = _store_trends(filters, sidebar, use_sidebar, ctx, log, labels)
+    return answer | {'intent': 'performance'}
+
+
+COMPOSERS = {'total': _total, 'performance': _performance, 'seasonality': _seasonality, 'store_trends': _store_trends,
              'satisfaction': _satisfaction, 'profit': _profit, 'decision': _decision,
              'quality': _quality, 'coverage': _coverage}
 

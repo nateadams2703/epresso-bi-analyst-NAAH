@@ -150,7 +150,8 @@ QUESTIONS = [q for q, _, _ in AGENT_TESTS] + [
     'What was revenue by category in 2027?', 'Which months bring in the most revenue?',
     'Which store had the highest revenue?', 'How did the large stores trend from 2026 to 2029?',
     'Are there missing values in the sales data?', 'What can you help me with?',
-    'What is the weather in Chicago?']
+    'What is the weather in Chicago?', 'How is Chicago doing?', 'How did Chicago do in 2028?',
+    'How are the Phoenix and Tempe stores doing?']
 
 
 @pytest.mark.parametrize('question', QUESTIONS)
@@ -259,3 +260,76 @@ def test_agent_test_5_same_question_after_upload(ctx):
     assert round(a['result']['value'] - b['result']['value'], 2) == 1000.00
     assert before['findings'][0] != after['findings'][0]
     assert '(original (data/))' in b['data'] and '(uploaded)' in a['data']
+
+
+# ---------------------------------------------------------------- defect 1: casual phrasing
+# Found Nov 2 (docs/agent-tests.md): "How did Orlando do in 2028?" got the unsupported reply,
+# because no intent rule matched a store question without a money word.
+@pytest.mark.parametrize('question, tool, used', [
+    ('How did Chicago do in 2028?', 'get_total_revenue', {'year': [2028], 'store': ['SH11']}),
+    ('How did Chicago fare in 2027?', 'get_total_revenue', {'year': [2027], 'store': ['SH11']}),
+    ('How is Chicago doing?', 'get_store_trends', {'store': ['SH11']}),
+    ("How's Boulder doing?", 'get_store_trends', {'store': ['SH03']}),
+    ('How does SH07 perform?', 'get_store_trends', {'store': ['SH07']}),
+    ('How has Denver performed from 2026 to 2029?', 'get_store_trends',
+     {'start_year': 2026, 'end_year': 2029, 'store': ['SH13']}),
+    ('How are the Phoenix and Tempe stores doing?', 'get_store_trends',
+     {'store': ['SH09', 'SH20']}),
+])
+def test_casual_store_questions_route_to_a_revenue_tool(ctx, question, tool, used):
+    answer = ask(ctx, question)
+    assert answer['intent'] == 'performance'
+    assert calls(answer) == [(tool, used)]
+    assert answer['tool_log'][0]['status'] == 'ok'
+
+
+def test_defect_1_how_did_orlando_do_in_2028_gives_the_ambiguous_store_answer(ctx):
+    answer = ask(ctx, 'How did Orlando do in 2028?')
+    assert answer['intent'] == 'performance'
+    assert answer['tool_log'][0]['tool'] == 'get_total_revenue'
+    assert answer['tool_log'][0]['status'] == 'error'
+    assert 'SH01 – Orlando, FL' in answer['findings'][0]
+    assert 'SH08 – Orlando, FL' in answer['findings'][0]
+
+
+def test_casual_store_trend_focuses_on_the_named_stores(ctx):
+    answer = ask(ctx, 'How are the Phoenix and Tempe stores doing?')
+    assert answer['scope'].startswith(
+        'Scope: focus: SH09 – Phoenix, AZ, SH20 – Tempe, AZ (from your question); ')
+    assert 'store filter not applied' not in answer['scope']
+    assert any(f.startswith('SH09 – Phoenix, AZ (4-Large)') for f in answer['findings'])
+    assert any(f.startswith('SH20 – Tempe, AZ (1-Small)') for f in answer['findings'])
+    assert not any(f.startswith('Largest decline') for f in answer['findings'])
+
+
+def test_named_store_that_cannot_be_resolved_is_not_replaced_by_another_store(ctx):
+    answer = ask(ctx, "How did Orlando's revenue decline?")
+    assert 'matches more than one store' in answer['findings'][0]
+    assert not any('Largest decline' in f for f in answer['findings'])
+
+
+@pytest.mark.parametrize('question', ['How did we do in 2028?', 'How is the weather doing?'])
+def test_casual_phrasing_without_a_store_is_still_unsupported(ctx, question):
+    answer = ask(ctx, question)
+    assert answer['intent'] is None and answer['tool_log'] == []
+
+
+# Retest follow-up (Nov 2): "How did Orlando's revenue decline?" showed 0 calls in the tool-call
+# log, while "How did Orlando do in 2028?" showed 1, though both end in the same error.
+def test_failed_store_lookup_in_a_trend_question_is_logged(ctx):
+    trend = ask(ctx, "How did Orlando's revenue decline?")
+    total = ask(ctx, 'How did Orlando do in 2028?')
+    assert [(e['tool'], e['status']) for e in trend['tool_log']] == [('get_store_trends', 'error')]
+    assert trend['tool_log'][0]['arguments'] == {'store': ['Orlando']}
+    assert trend['tool_log'][0]['result']['error'] == total['tool_log'][0]['result']['error']
+
+
+@pytest.mark.parametrize('question', ["How did Orlando's revenue decline?",
+                                      'How did Orlando do in 2028?',
+                                      "What was Orlando's revenue in 2027?",
+                                      'Should E-Presso close the Orlando store?',
+                                      'How is SH99 doing?', 'What was revenue in 2031?'])
+def test_every_error_answer_logs_what_was_tried(ctx, question):
+    answer = ask(ctx, question)
+    assert answer['findings'][0].startswith('The request could not be completed')
+    assert answer['tool_log'] and answer['tool_log'][-1]['status'] == 'error'

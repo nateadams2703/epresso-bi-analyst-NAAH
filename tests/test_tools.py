@@ -80,6 +80,20 @@ def test_store_breakdown_includes_market_tier(trends):
     assert {x['store']: x['market'] for x in r.value}['SH03'] == '4-Large'
 
 
+def test_store_trends_focus_store_keeps_the_ranking_of_all_stores(trends):
+    r = analytics.get_store_trends(trends, store='SH03')
+    assert [s['store'] for s in r.value['focus']] == ['SH03']
+    assert r.value['focus'][0]['rank_overall'] == 2  # still ranked among all four stores
+    assert r.value['stores_compared'] == 4 and r.scope['focus'] == 'SH03'
+
+
+def test_store_trends_focus_on_an_excluded_or_unknown_store(trends):
+    web = analytics.get_store_trends(trends, store='SH00')  # website excluded by default
+    assert web.value['focus'] == []
+    assert any('SH00 is not among the stores compared' in c for c in web.caveats)
+    assert analytics.get_store_trends(trends, store='SH99').error
+
+
 def test_store_trends_when_no_store_declined(trends):
     trends.loc[4, 'Revenue'] = 150.0   # SH01 2026: 100 -> 150
     trends.loc[8, 'Revenue'] = 1200.0  # SH03 2026: 1000 -> 1200
