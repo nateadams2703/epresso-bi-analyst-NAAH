@@ -5,6 +5,8 @@ the call. Nothing here executes model-written code, and no tool changes the load
 from __future__ import annotations
 
 import calendar
+import json
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -13,6 +15,7 @@ import pandas as pd
 
 import analytics
 from analytics import ToolResult
+from llm_client import LLMError
 
 
 @dataclass
@@ -784,13 +787,19 @@ COMPOSERS = {'total': _total, 'performance': _performance, 'seasonality': _seaso
 
 
 def answer_question(question: str, ctx: Context, sidebar: dict | None = None,
-                    use_sidebar: bool = True, mode: str = 'rules') -> dict:
+                    use_sidebar: bool = True, mode: str = 'rules', client=None) -> dict:
     """Route the question, call the tools through the dispatcher, and compose the answer:
     scope, findings (numbers only from tool results), interpretation, next steps, and the
     tool-call log. `sidebar` holds the dashboard filters; the question's own filters win."""
+    if mode == 'llm':
+        return llm_answer(question, ctx, sidebar, use_sidebar, client)
+    return _rules_answer(question, ctx, sidebar, use_sidebar) | {
+        'mode': 'rules', 'answered_by': 'rules-based assistant', 'fallback': None}
+
+
+def _rules_answer(question: str, ctx: Context, sidebar: dict | None, use_sidebar: bool) -> dict:
+    """Option B: keyword rules pick the tools; composers write the answer."""
     log: list = []
-    if mode != 'rules':
-        return llm_router(question, ctx)
     intent, filters = route(question, ctx)
     labels = analytics.store_labels(ctx.model) if ctx.model is not None else {}
     if intent is None:
@@ -803,7 +812,212 @@ def answer_question(question: str, ctx: Context, sidebar: dict | None = None,
     return COMPOSERS[intent](filters, sidebar, use_sidebar, ctx, log, labels)
 
 
-def llm_router(question: str, ctx: Context):
-    """Option A router. TODO: after the rules-based version works, ask a model that
-    supports function calling to choose from TOOLS (see tool_definitions)."""
-    raise NotImplementedError('Add the language-model router after the rules router works.')
+# ---------------------------------------------------------------- language-model assistant (Option A)
+# Gemini only CHOOSES tools and arguments (through function calling) and writes the text. Every
+# tool runs through run_tool(), and our code checks the answer before showing it. If anything
+# fails, the rules-based assistant answers instead, labelled with the reason.
+
+MAX_MODEL_CALLS = 5  # per question: up to 4 rounds of tool requests + 1 written answer
+MAX_TOOL_CALLS = 6   # per question
+logger = logging.getLogger('epresso.assistant')
+
+FALLBACK_REASONS = {
+    'missing_key': 'no Gemini API key is configured',
+    'key_rejected': 'Gemini rejected the API key',
+    'quota': 'the Gemini free-tier quota is used up for now',
+    'timeout': 'Gemini did not answer in time',
+    'unavailable': 'Gemini could not be reached',
+    'bad_response': "Gemini's answer was not in the expected format",
+    'no_tool_called': 'Gemini answered without running any analysis tool',
+    'no_successful_tool': 'none of the tools Gemini asked for could run',
+    'call_limit': 'Gemini needed more model or tool calls than allowed for one question',
+    'unsupported_number': "Gemini's answer contained a number that is not in any tool result",
+}
+
+LLM_RULES = SYSTEM_PROMPT + """
+How to work:
+- Answer only by calling the tools provided, and call at least one tool for every question.
+- For questions the data cannot answer directly (profit, costs, causes, store decisions), call
+  get_data_coverage plus the closest revenue tool, then explain what information is missing.
+- Never calculate new numbers yourself (no sums, differences, averages, or percentages of your
+  own). Restate numbers from tool results; rounding them (for example $6.34M) is fine.
+- Store arguments accept a store ID (SH11) or a city that has one store (Chicago). If a tool
+  returns an error, read it; for a city with several stores, ask the user which store.
+- Stores differ in size (Market tier): when comparing stores, mention their tiers."""
+
+FINAL_INSTRUCTION = """Now write the answer for an E-Presso manager as JSON with three lists of
+short sentences:
+- findings: facts from the tool results, with their numbers. No number that is not in a tool
+  result, the tool arguments, or the question.
+- interpretation: what the findings mean and their limitations (use the tools' caveats;
+  revenue is not profit; association is not causation).
+- next_steps: a useful follow-up question or action, or exactly "No recommendation is supported
+  by this data." when the question asks for a decision, a cause, or profit.
+Do not include the scope; it is added separately."""
+
+ANSWER_SCHEMA = {'type': 'object',
+                 'properties': {key: {'type': 'array', 'items': {'type': 'string'}}
+                                for key in ('findings', 'interpretation', 'next_steps')},
+                 'required': ['findings', 'interpretation', 'next_steps']}
+
+# A number as written in an answer: optional sign and $, digits, optional scale word or %.
+NUMBER_IN_TEXT = re.compile(r'(?<![A-Za-z0-9.])[-+−]?\$?(\d[\d,]*(?:\.\d+)?)\s*'
+                            r'(%|thousand|million|billion|bn|[kKmMbB](?![A-Za-z]))?')
+SCALES = {'k': 1e3, 'thousand': 1e3, 'm': 1e6, 'million': 1e6, 'b': 1e9, 'bn': 1e9,
+          'billion': 1e9}
+
+
+def _allowed_numbers(question: str, log: list) -> list:
+    """Every number the answer may use: tool results, tool arguments, and the question."""
+    sources = json.dumps([[e['result'], e['arguments'], e['arguments_used']] for e in log],
+                         ensure_ascii=False, default=str) + ' ' + question.replace(',', '')
+    return [abs(float(x)) for x in re.findall(r'(?<![A-Za-z])\d+(?:\.\d+)?', sources)]
+
+
+def unsupported_numbers(texts: list, question: str, log: list) -> list:
+    """Numbers in the answer that are not a tool number (or a rounded / formatted version of
+    one, e.g. $6.34M for 6339640), a tool argument, or a number from the question."""
+    allowed = _allowed_numbers(question, log)
+    bad = []
+    for text in texts:
+        for match in NUMBER_IN_TEXT.finditer(text):
+            digits = match.group(1).replace(',', '')
+            shown = float(digits)
+            decimals = len(digits.split('.')[1]) if '.' in digits else 0
+            scale = SCALES.get((match.group(2) or '').lower(), 1)
+            tolerance = 0.5 * 10 ** -decimals + 1e-9  # what rounding to that precision allows
+            if not any(abs(a / scale - shown) <= tolerance for a in allowed):
+                bad.append(match.group(0).strip())
+    return bad
+
+
+def _llm_system(sidebar: dict | None, use_sidebar: bool) -> str:
+    active = {p: v for p, v in (sidebar or {}).items() if v} if use_sidebar else {}
+    if active:
+        filters = '; '.join(f'{p} = {v}' for p, v in active.items())
+        note = (f'Dashboard sidebar filters are active: {filters}. Pass them as tool arguments '
+                f'unless the question names a different value for that filter.')
+    else:
+        note = 'No dashboard filters apply: use only the filters the question names.'
+    return LLM_RULES + '\n' + note
+
+
+def _llm_scope(question: str, log: list, ctx: Context, sidebar: dict | None,
+               use_sidebar: bool, labels: dict) -> str:
+    """The scope line, built by our code from the arguments each tool actually used. Each
+    filter says where it came from: the question, the sidebar, or the model's own choice."""
+    asked = {}
+    for param, raw in extract_filters(question, ctx).items():
+        value, err = normalize(param, raw, ctx)
+        if value is not None and not err:
+            asked[param] = value if isinstance(value, list) else [value]
+    side = ({p: list(v) for p, v in (sidebar or {}).items() if v} if use_sidebar else {})
+    pieces, used_params = [], set()
+    for entry in log:
+        if entry['status'] != 'ok':
+            continue
+        parts = []
+        for param, value in entry['arguments_used'].items():
+            if param == 'by':
+                parts.append('by ' + ' and '.join(value))
+                continue
+            values = value if isinstance(value, list) else [value]
+            key = 'year' if param in ('start_year', 'end_year') else param
+            used_params.add(key)
+            if key in asked and set(values) <= set(asked[key]):
+                source = FROM_QUESTION
+            elif key in side and set(values) <= set(side[key]):
+                source = FROM_SIDEBAR
+            else:
+                source = 'chosen by the model'
+            prefix = {'start_year': 'from ', 'end_year': 'to '}.get(param, '')
+            parts.append(f'{prefix}{_describe(param, values, labels)} ({source})')
+        if entry['tool'] == 'get_store_trends' and 'channel' not in entry['arguments_used']:
+            parts.append('physical stores only (the tool\'s default)')
+        pieces.append(f"{entry['tool']}: " + ('; '.join(parts) if parts else 'all loaded data'))
+    scope = 'Scope: ' + ' | '.join(pieces) + '.'
+    unused = sorted(set(side) - used_params - set(asked))
+    if unused:
+        scope += f' Sidebar filter(s) not used by the model: {", ".join(unused)}.'
+    return scope
+
+
+def _sections(written) -> dict | None:
+    """The model's JSON as three lists of strings, or None if it is not in that shape."""
+    if not isinstance(written, dict):
+        return None
+    out = {}
+    for key in ('findings', 'interpretation', 'next_steps'):
+        items = written.get(key)
+        if not isinstance(items, list):
+            return None
+        out[key] = [str(x).strip() for x in items if str(x).strip()]
+    return out if out['findings'] else None
+
+
+def llm_answer(question: str, ctx: Context, sidebar: dict | None = None,
+               use_sidebar: bool = True, client=None) -> dict:
+    """Option A: Gemini picks tools through function calling; our dispatcher runs them; Gemini
+    writes the answer; our code checks it. Any failure -> the rules-based answer, labelled."""
+    log: list = []
+
+    def fallback(kind: str, detail: str = '') -> dict:
+        reason = FALLBACK_REASONS.get(kind, kind)
+        logger.warning('Assistant fallback (%s): %s | question: %r', kind, detail or reason,
+                       question)
+        answer = answer_question(question, ctx, sidebar, use_sidebar, mode='rules')
+        return answer | {
+            'fallback': {'kind': kind, 'reason': reason, 'detail': detail,
+                         'message': f'The language model did not answer ({reason}), so the '
+                                    f'rules-based assistant answered.'},
+            'llm_attempt_log': log}
+
+    if client is None:
+        return fallback('missing_key')
+    model_calls = tool_calls = 0
+    try:
+        session = client.start(_llm_system(sidebar, use_sidebar), tool_definitions(ctx))
+        turn = session.send(question)
+        model_calls = 1
+        while turn.function_calls:
+            if (model_calls >= MAX_MODEL_CALLS - 1
+                    or tool_calls + len(turn.function_calls) > MAX_TOOL_CALLS):
+                return fallback('call_limit', f'after {model_calls} model calls and '
+                                              f'{tool_calls} tool calls')
+            results = []
+            for name, args in turn.function_calls:
+                result = run_tool(name, args, ctx, log)  # the only way a tool ever runs
+                tool_calls += 1
+                results.append((name, json.loads(json.dumps(result.to_dict(), default=str))))
+            turn = session.send_tool_results(results)
+            model_calls += 1
+        if not log:
+            return fallback('no_tool_called')
+        if not any(e['status'] == 'ok' for e in log):
+            return fallback('no_successful_tool', '; '.join(
+                e['result']['error'] or '' for e in log))
+        written = session.final_answer(FINAL_INSTRUCTION, ANSWER_SCHEMA)
+        model_calls += 1
+    except LLMError as exc:
+        return fallback(exc.kind, str(exc))
+    sections = _sections(written)
+    if sections is None:
+        return fallback('bad_response', 'the JSON did not have three lists of sentences')
+    bad = unsupported_numbers(sections['findings'] + sections['interpretation']
+                              + sections['next_steps'], question, log)
+    if bad:
+        return fallback('unsupported_number', ', '.join(bad))
+    intent, _ = route(question, ctx)
+    next_steps = [s for s in sections['next_steps'] if s != NO_RECOMMENDATION]
+    if intent in ('decision', 'profit', 'satisfaction') or len(next_steps) < len(
+            sections['next_steps']):
+        next_steps.insert(0, NO_RECOMMENDATION)
+    labels = analytics.store_labels(ctx.model) if ctx.model is not None else {}
+    logger.info('Assistant answered with Gemini (%s): %d model calls, %d tool calls',
+                client.model, model_calls, tool_calls)
+    return {'intent': intent, 'scope': _llm_scope(question, log, ctx, sidebar, use_sidebar, labels),
+            'findings': sections['findings'], 'interpretation': sections['interpretation'],
+            'next_steps': next_steps or ['Ask a follow-up question to see more detail.'],
+            'tool_log': log, 'mode': 'llm',
+            'answered_by': f'Gemini ({client.model}), function calling', 'fallback': None,
+            'model_calls': model_calls}
