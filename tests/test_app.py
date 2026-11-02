@@ -8,6 +8,11 @@ import sys
 import pytest
 from streamlit.testing.v1 import AppTest
 
+try:
+    from streamlit.testing.v1.errors import AppTestError
+except ImportError:  # older Streamlit (e.g. 1.45) has no AppTestError and never raises it
+    AppTestError = Exception
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import analytics  # noqa: E402
@@ -196,3 +201,75 @@ def test_assistant_question_runs_through_the_dispatcher_and_logs_the_data():
     entry = at.session_state['history'][-1]['answer']['tool_log'][0]
     assert entry['tool'] == 'data_quality_report' and entry['status'] == 'ok'
     assert entry['data'].startswith('Sales.csv (original (data/)) · 25,200 rows')
+
+
+# ---------------------------------------------------------------- assistant tab (Checkpoint 4)
+def ask_app(at, question):
+    at.chat_input[0].set_value(question).run()
+    return at
+
+
+def history(at):
+    return at.session_state['history']
+
+
+def test_assistant_says_it_is_rules_based_option_b():
+    at = run()
+    assert any('Option B' in c.value and 'does not use a language model' in c.value
+               for c in at.caption)
+
+
+def test_answer_shows_scope_sections_and_tool_call_log():
+    at = ask_app(run(), 'How much revenue did the website generate in 2028?')
+    assert_no_errors(at)
+    texts = [m.value for m in at.markdown]
+    assert any(t.startswith('**Scope: 2028 (from your question)') for t in texts)
+    for title in ('**Findings**', '**Interpretation**', '**Next steps**'):
+        assert any(t.startswith(title) for t in texts), title
+    assert any(e.label == 'Tool-call log (1 call)' for e in at.expander)
+    assert any(t.startswith('**1. get_total_revenue** · ok') for t in texts)
+    assert any(t.startswith('Arguments: {"year": [2028], "channel": ["Website"]}') for t in texts)
+    assert len(at.get('json')) >= 1  # the raw tool result
+    assert any('Questions used: 1 of 15' in c.value for c in at.caption)
+
+
+def test_unsupported_question_shows_no_tool_was_run():
+    at = ask_app(run(), 'What is the weather in Chicago?')
+    assert any(e.label == 'Tool-call log (0 calls)' for e in at.expander)
+    assert any('No tool was run for this question.' in c.value for c in at.caption)
+
+
+def test_sidebar_filters_apply_to_questions_until_switched_off():
+    at = run(store=['SH11'])
+    assert any('Sidebar filters that will apply:' in c.value and 'SH11 – Chicago, IL' in c.value
+               for c in at.caption)
+    ask_app(at, 'What was revenue in 2028?')
+    assert 'SH11 – Chicago, IL (from the sidebar filter)' in history(at)[-1]['answer']['scope']
+    at.checkbox(key='assistant_use_sidebar').uncheck().run()
+    ask_app(at, 'What was revenue in 2028?')
+    assert 'all stores' in history(at)[-1]['answer']['scope']
+
+
+def test_question_limit_stops_at_15_with_a_clear_message():
+    at = AppTest.from_file(APP, default_timeout=90)
+    at.session_state['n_questions'] = 14
+    at.run()
+    ask_app(at, 'What was revenue in 2028?')  # the 15th question is still answered
+    assert len(history(at)) == 1
+    assert any("You've reached this session's limit of 15 questions" in w.value
+               for w in at.warning)
+    assert at.chat_input[0].proto.disabled  # the chat box is disabled at the limit
+    try:
+        ask_app(at, 'And in 2029?')           # a 16th question is not answered
+    except AppTestError:
+        pass  # newer Streamlit refuses to type into a disabled chat box, like a browser
+    assert len(history(at)) == 1 and at.session_state['n_questions'] == 15
+
+
+@pytest.mark.parametrize('question', ['How much revenue did the website generate in 2028?',
+                                      'Should E-Presso close the Chicago store?',
+                                      'Which E-Presso store is the most profitable?'])
+def test_dollar_signs_in_answers_are_escaped(question):
+    at = ask_app(run(), question)
+    assert any('$' in t for t in markdown_texts(at))  # the answer does contain dollars
+    assert [t for t in markdown_texts(at) if UNESCAPED_DOLLAR.search(t)] == []

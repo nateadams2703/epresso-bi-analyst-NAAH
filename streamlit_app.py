@@ -2,6 +2,7 @@
 Keep loading/checks in data_prep.py, calculations in analytics.py, and the assistant in agent.py.
 This file only lays things out: every number on screen comes from an analytics.py function."""
 import calendar
+import json
 
 import pandas as pd
 import plotly.express as px
@@ -208,6 +209,31 @@ def show_dashboard(model: pd.DataFrame, selection: dict, total) -> None:
         show_data(df[['store', 'store_label', 'Channel', 'revenue', 'share_pct']],
                   money=['revenue'], pct=['share_pct'])
 
+def show_answer(item: dict) -> None:
+    """One question and its answer: scope first, then Findings, Interpretation, Next steps,
+    and the tool-call log (function, arguments, raw result) for every tool that was run."""
+    answer = item['answer']
+    with st.chat_message('user'):
+        st.markdown(md(item['question']))
+    with st.chat_message('assistant'):
+        st.markdown(md(f"**{answer['scope']}**"))
+        for title, key in (('Findings', 'findings'), ('Interpretation', 'interpretation'),
+                           ('Next steps', 'next_steps')):
+            if answer[key]:
+                st.markdown(md(f'**{title}**\n' + '\n'.join(f'- {x}' for x in answer[key])))
+        log = answer['tool_log']
+        with st.expander(f"Tool-call log ({len(log)} call{'s' if len(log) != 1 else ''})"):
+            if not log:
+                st.caption('No tool was run for this question.')
+            for entry in log:
+                st.markdown(md(f"**{entry['call']}. {entry['tool']}** · {entry['status']} · "
+                               f"{entry['rows_used']:,} rows · {entry['duration_ms']} ms"))
+                st.markdown(md(f"Arguments: {json.dumps(entry['arguments'], ensure_ascii=False)}"
+                               f" → used: {json.dumps(entry['arguments_used'], ensure_ascii=False)}"))
+                st.caption(md(f"Data: {entry['data'] or 'not available'}"))
+                st.json(entry['result'], expanded=False)
+
+
 st.set_page_config(page_title='E-Presso BI Analyst', layout='wide')
 st.title('E-Presso BI Analyst')
 st.caption('Revenue, store, product, and customer-survey analysis for E-Presso managers.')
@@ -362,32 +388,37 @@ with tab_dash:
             show_dashboard(model, selection, total)
 
 with tab_assistant:
-    st.caption('Mode: rules-based starter. Describe what you actually built here.')
+    st.subheader('Analytical assistant')
+    st.caption('Mode: rules-based assistant (Option B). It matches each question to fixed '
+               'analysis tools with keyword rules; it does not use a language model. Every '
+               'number comes from a tool run on the data loaded now, and the tool-call log '
+               'under each answer shows the function, its arguments, and the raw result.')
     # The tools read the data loaded right now (an upload is used at once); the fingerprint
     # records in each tool-call log entry which data that was.
     ctx = agent.make_context(model, tables, summary)
     if model is None:
         st.warning('Revenue questions need the Sales table, which did not load.')
+    use_sidebar = st.checkbox(
+        'Apply the sidebar filters to my questions', value=True, key='assistant_use_sidebar',
+        help='Filters named in your question always win. Filters it does not mention come '
+             'from the sidebar while this is ticked; every answer\'s scope says which is which.')
+    if use_sidebar and any(selection.values()):
+        st.caption(md('Sidebar filters that will apply: ' + scope_text(
+            {p: v or 'All' for p, v in selection.items()}, labels).removeprefix('Scope: ')))
     st.session_state.setdefault('n_questions', 0)
     st.session_state.setdefault('history', [])
     for item in st.session_state['history']:
-        with st.chat_message('user'):
-            st.write(item['question'])
-        with st.chat_message('assistant'):
-            answer = item['answer']
-            st.markdown(md(f"**{answer['scope']}**"))
-            for title, key in (('Findings', 'findings'), ('Interpretation', 'interpretation'),
-                               ('Next steps', 'next_steps')):
-                if answer[key]:
-                    st.markdown(md(f'**{title}**\n' + '\n'.join(f'- {x}' for x in answer[key])))
-            with st.expander('Tool-call log'):
-                st.json(item['answer']['tool_log'])
-    question = st.chat_input('Ask a question about the loaded data')
-    if question:
-        if st.session_state['n_questions'] >= MAX_QUESTIONS:
-            st.warning('Question limit reached for this session. Reload the page to start over.')
-        else:
-            st.session_state['n_questions'] += 1
-            answer = agent.answer_question(question, ctx, mode='rules')
-            st.session_state['history'].append({'question': question, 'answer': answer})
-            st.rerun()
+        show_answer(item)
+    used = st.session_state['n_questions']
+    st.caption(f'Questions used: {used} of {MAX_QUESTIONS} this session.')
+    if used >= MAX_QUESTIONS:
+        st.warning(f"You've reached this session's limit of {MAX_QUESTIONS} questions. Reload "
+                   f'the page to start a new session.')
+    question = st.chat_input('Ask a business question about the loaded data',
+                             disabled=used >= MAX_QUESTIONS)
+    if question and used < MAX_QUESTIONS:
+        st.session_state['n_questions'] += 1
+        answer = agent.answer_question(question, ctx, sidebar=selection,
+                                       use_sidebar=use_sidebar)
+        st.session_state['history'].append({'question': question, 'answer': answer})
+        st.rerun()
