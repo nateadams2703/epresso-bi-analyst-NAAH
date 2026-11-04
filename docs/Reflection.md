@@ -1,0 +1,13 @@
+# Development Reflection
+
+For this project we used two AI tools: Claude (chat) and Claude Code. Claude Code worked inside our project folder to write, test, and commit code, while the Claude chat helped us plan each step, explain Claude Code's work, and check it. Having the two agents check each other helped a lot, because each found issues the other missed. Inside the app, Google's Gemini powers the assistant, but it can only use functions we built and tested.
+
+Our biggest challenge was understanding what the project was asking of us and learning the language needed to communicate with AI. Neither of us had used GitHub, Streamlit, or Claude Code before, and the AI's long, technical responses were hard to interpret. The clearest technical example came at the end: our Gemini assistant passed every automated test but failed the first time we used it live.
+
+We used the Claude chat to translate Claude Code's output into simpler terms, so we could make informed decisions and give better instructions. For the Gemini failure, the backup assistant still answered correctly, a panel showed Gemini's first step had worked, and the server log gave the exact error: a message format Gemini doesn't accept. We fixed it, added a test that would have caught it, and retested.
+
+The AI did well at building code and giving clear, step-by-step instructions, and its tests even caught a bug in the course's starter code. The second agent was good at double-checking: reviewing the live app, it found cut-off text and dollar amounts displaying as math formulas that the tests had missed. The AI struggled by making things more complicated than needed, such as long, repetitive data-quality notes, and by trusting documentation it couldn't verify, which caused the Gemini error.
+
+Human judgment was needed to critically review the AI's output and decide whether it made sense for an E-Presso manager. We noticed the filters were hard to find and the data-quality section read awkwardly, chose our Gemini model from the free-tier limits Audrey found, and questioned results like the satisfaction-versus-revenue correlation, which mostly reflects store size.
+
+We trust the application to describe what happened in the data: its numbers matched Power BI to the cent and passed our $1,000 test, and using two agents to validate each other caught problems we would have missed. We would not rely on it alone for decisions like closing a store, because the data has no costs or profit. Our safeguards would be a second agent reviewing the work, human approval before any commit, and enforcing key rules in code rather than trusting the AI's wording.
