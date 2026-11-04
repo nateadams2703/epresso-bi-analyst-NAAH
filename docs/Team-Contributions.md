@@ -1,6 +1,10 @@
 # Team contribution statement
 
+Nate Adams and Audrey Haley worked on this project together, mostly in the same room. We made the main design and analysis decisions jointly; the split below shows who led each piece.
+
 | Team member | Main responsibilities | Key calculation or design decision I can explain | Approximate commits |
 |---|---|---|---|
-| Nate Adams | | | |
-| Audrey Haley | | | |
+| Nate Adams | Set up the GitHub repo, Streamlit deployment, and local environment. Drove development with Claude Code: data loading and joins, dashboard, analytical functions, dispatcher, rules-based assistant, and the Gemini upgrade. Ran local and hosted testing, including the $1,000 modified-data test, and caught several usability problems by reviewing the app (cut-off text, dollar signs rendering as math, data-quality notes layout). | **Joins and merge checks:** why joining Sales to Stores, Products, and Categories doesn't duplicate revenue (rows and revenue are identical before and after each join). **The $1,000 test:** why total revenue rose by exactly $1,000 but the 2025→2029 change didn't move. **How the Gemini guards work:** the model only picks named tools, our code checks every number against the tool results, and the app falls back to the rules-based assistant if anything fails. | [check GitHub] |
+| Audrey Haley | Pulled the exact Power BI figures used for validation (total, Website, Brick & Mortar, by year, monthly shares, and Chicago) and the screenshots behind them. Set up the Gemini API key and checked the free-tier rate limits, which decided our model choice. Reviewed the grain statements, the README, and the documentation. | **Power BI validation:** how our app's totals match Power BI to the cent, and why the "Percent of Annual Revenue" chart actually divides by the selected period's total, not each year's. **Satisfaction vs. revenue:** the overall correlation (+0.235) mostly reflects store size, because within Market tiers it's near zero, and it shows association, not causation. **Free-tier limits:** why we chose gemini-3.5-flash-lite (about 15 requests per minute and 500 per day, vs. 20 per day for 3.6 Flash). | [check GitHub] |
+
+**Shared:** reviewing every major decision during development (e.g. physical stores only in store comparisons, the Chicago row for the $1,000 test, Chicago as the additional validation measure), reviewing the agent test results, and writing the reflection.
